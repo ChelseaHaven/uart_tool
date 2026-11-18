@@ -1,0 +1,49 @@
+{
+  "format": "uart-tool.binary-protocol",
+  "version": 1,
+  "id": "generic",
+  "name": "通用结构（从零配置）",
+  "configuration": {
+    "header": "AA 55",
+    "mode": "fixed",
+    "frameSize": 6,
+    "maxFrameSize": 4096,
+    "lengthOffset": 2,
+    "lengthBytes": 2,
+    "lengthEndian": "little",
+    "lengthMeaning": "payload",
+    "payloadOffset": 2,
+    "lengthIncludesChecksum": false,
+    "checksum": "none",
+    "checksumEndian": "little",
+    "checksumStart": 0,
+    "checksumEnd": -1,
+    "trailerBytes": 0,
+    "checks": [],
+    "commandOffset": -1,
+    "commandBytes": 2,
+    "commandEndian": "little",
+    "autoLayout": true,
+    "tail": "",
+    "structure": [
+      {
+        "kind": "header",
+        "hex": "AA 55"
+      },
+      {
+        "kind": "payload"
+      }
+    ],
+    "fields": [
+      {
+        "name": "value",
+        "type": "float32",
+        "offset": 2,
+        "count": 1,
+        "variable": false,
+        "endian": "little"
+      }
+    ],
+    "templateId": "generic"
+  }
+}

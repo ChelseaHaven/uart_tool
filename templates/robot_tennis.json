@@ -1,0 +1,208 @@
+{
+  "format": "uart-tool.binary-protocol",
+  "version": 1,
+  "id": "robot_tennis",
+  "name": "网球机器人上行 · A5",
+  "configuration": {
+    "header": "A5",
+    "mode": "variable",
+    "frameSize": 6,
+    "maxFrameSize": 137,
+    "lengthOffset": 1,
+    "lengthBytes": 2,
+    "lengthEndian": "little",
+    "lengthMeaning": "payload",
+    "payloadOffset": 7,
+    "lengthIncludesChecksum": false,
+    "checksum": "none",
+    "checksumEndian": "little",
+    "checksumStart": 0,
+    "checksumEnd": -1,
+    "trailerBytes": 2,
+    "checks": [
+      {
+        "name": "帧头 CRC8",
+        "algorithm": "crc",
+        "offset": 4,
+        "start": 0,
+        "end": 4,
+        "early": true,
+        "enabled": true,
+        "width": 8,
+        "polynomial": "0x31",
+        "initial": "0xFF",
+        "xorOut": "0x0",
+        "reflectInput": true,
+        "reflectOutput": true
+      },
+      {
+        "name": "整帧 CRC16",
+        "algorithm": "crc",
+        "offset": -2,
+        "start": 0,
+        "end": -2,
+        "enabled": true,
+        "width": 16,
+        "polynomial": "0x1021",
+        "initial": "0xFFFF",
+        "xorOut": "0x0",
+        "reflectInput": true,
+        "reflectOutput": true
+      }
+    ],
+    "commandOffset": 5,
+    "commandBytes": 2,
+    "commandEndian": "little",
+    "autoLayout": true,
+    "tail": "",
+    "structure": [],
+    "fields": [
+      {
+        "name": "sequence",
+        "type": "uint8",
+        "offset": 3,
+        "count": 1,
+        "variable": false,
+        "endian": "little"
+      },
+      {
+        "name": "command",
+        "type": "uint16",
+        "offset": 5,
+        "count": 1,
+        "variable": false,
+        "endian": "little"
+      },
+      {
+        "name": "payload",
+        "type": "bytes",
+        "offset": 7,
+        "count": 1,
+        "variable": true,
+        "endian": "little"
+      }
+    ],
+    "templateId": "robot_tennis",
+    "commandValue": "0x0101",
+    "messages": [
+      {
+        "command": "0x0101",
+        "name": "四轮轮速",
+        "payloadSize": 16,
+        "fields": [
+          {
+            "name": "wheel0_rad_s",
+            "type": "float32",
+            "offset": 7,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          },
+          {
+            "name": "wheel1_rad_s",
+            "type": "float32",
+            "offset": 11,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          },
+          {
+            "name": "wheel2_rad_s",
+            "type": "float32",
+            "offset": 15,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          },
+          {
+            "name": "wheel3_rad_s",
+            "type": "float32",
+            "offset": 19,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          }
+        ]
+      },
+      {
+        "command": "0x0102",
+        "name": "IMU 原始数据",
+        "payloadSize": 36,
+        "fields": [
+          {
+            "name": "gyro_x",
+            "type": "float32",
+            "offset": 7,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          },
+          {
+            "name": "gyro_y",
+            "type": "float32",
+            "offset": 11,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          },
+          {
+            "name": "gyro_z",
+            "type": "float32",
+            "offset": 15,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          },
+          {
+            "name": "accel_x",
+            "type": "float32",
+            "offset": 19,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          },
+          {
+            "name": "accel_y",
+            "type": "float32",
+            "offset": 23,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          },
+          {
+            "name": "accel_z",
+            "type": "float32",
+            "offset": 27,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          },
+          {
+            "name": "mag_x",
+            "type": "float32",
+            "offset": 31,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          },
+          {
+            "name": "mag_y",
+            "type": "float32",
+            "offset": 35,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          },
+          {
+            "name": "mag_z",
+            "type": "float32",
+            "offset": 39,
+            "count": 1,
+            "variable": false,
+            "endian": "little"
+          }
+        ]
+      }
+    ]
+  }
+}

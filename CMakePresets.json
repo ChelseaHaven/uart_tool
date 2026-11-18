@@ -1,0 +1,16 @@
+{
+  "version": 3,
+  "configurePresets": [{
+    "name": "qt-debug", "displayName": "Qt 6.12 · 串口接收 · Debug", "generator": "Ninja",
+    "binaryDir": "${sourceDir}/build",
+    "cacheVariables": {
+      "CMAKE_BUILD_TYPE": "Debug", "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+      "CMAKE_TOOLCHAIN_FILE": "/home/kwille/Qt/6.12.0/gcc_64/lib/cmake/Qt6/qt.toolchain.cmake",
+      "CMAKE_MAKE_PROGRAM": "/home/kwille/Qt/Tools/Ninja/ninja",
+      "QT_QML_GENERATE_QMLLS_INI": "ON", "BUILD_TESTING": "ON"
+    },
+    "vendor": {"qt.io/Qt": {"VSCODE_QT_INSTALLATION": "/home/kwille/Qt/6.12.0/gcc_64"}}
+  }],
+  "buildPresets": [{"name": "qt-debug", "configurePreset": "qt-debug", "jobs": 4}],
+  "testPresets": [{"name": "qt-debug", "configurePreset": "qt-debug", "output": {"outputOnFailure": true}}]
+}

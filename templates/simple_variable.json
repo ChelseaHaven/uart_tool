@@ -1,0 +1,41 @@
+{
+  "format": "uart-tool.binary-protocol",
+  "version": 1,
+  "id": "simple_variable",
+  "name": "简单变长帧",
+  "configuration": {
+    "header": "AA 55",
+    "mode": "variable",
+    "frameSize": 6,
+    "maxFrameSize": 4096,
+    "lengthOffset": 2,
+    "lengthBytes": 2,
+    "lengthEndian": "little",
+    "lengthMeaning": "payload",
+    "payloadOffset": 4,
+    "lengthIncludesChecksum": false,
+    "checksum": "none",
+    "checksumEndian": "little",
+    "checksumStart": 0,
+    "checksumEnd": -1,
+    "trailerBytes": 0,
+    "checks": [],
+    "commandOffset": -1,
+    "commandBytes": 2,
+    "commandEndian": "little",
+    "autoLayout": true,
+    "tail": "",
+    "structure": [],
+    "fields": [
+      {
+        "name": "samples",
+        "type": "float32",
+        "offset": 4,
+        "count": 1,
+        "variable": true,
+        "endian": "little"
+      }
+    ],
+    "templateId": "simple_variable"
+  }
+}

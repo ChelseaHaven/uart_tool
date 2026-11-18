@@ -1,0 +1,37 @@
+pragma Singleton
+import QtQuick
+
+QtObject {
+    property bool dark: false
+    readonly property color window: dark?"#111923":"#f3f6fa"
+    readonly property color surface: dark?"#1a2533":"white"
+    readonly property color panel: dark?"#202d3c":"#f7f9fc"
+    readonly property color input: dark?"#15202d":"#fafcfe"
+    readonly property color border: dark?"#34475c":"#d9e2eb"
+    readonly property color divider: dark?"#2b3b4f":"#e3e9f0"
+    readonly property color text: dark?"#deE8f3":"#304960"
+    readonly property color heading: dark?"#edf5fc":"#17344c"
+    readonly property color secondary: dark?"#a8bdd0":"#638298"
+    readonly property color muted: dark?"#91a4bb":"#8497aa"
+    readonly property color disabledText: dark?"#73859b":"#9ca9b6"
+    readonly property color disabledSurface: dark?"#253243":"#edf1f5"
+    readonly property color hover: dark?"#293b4e":"#f2f7fa"
+    readonly property color pressed: dark?"#344d62":"#e4edf4"
+    readonly property color accent: dark?"#0b7d88":"#09929e"
+    readonly property color accentHover: dark?"#10949f":"#16a4ac"
+    readonly property color accentPressed: dark?"#09636c":"#0b747e"
+    readonly property color accentText: dark?"#64d0d9":"#167c8a"
+    readonly property color accentSoft: dark?"#193d42":"#e1f4f2"
+    readonly property color contrastText: dark?"white":"white"
+    readonly property color selection: dark?"#285261":"#d1eef0"
+    readonly property color selectionText: dark?"#defcff":"#075e68"
+    readonly property color error: dark?"#f2988c":"#b25c51"
+    readonly property color errorSurface: dark?"#432c32":"#fff0ee"
+    readonly property color logTx: dark?"#efbc72":"#885110"
+    readonly property color warning: dark?"#e0b66d":"#ac823c"
+    readonly property color warningSurface: dark?"#3b3325":"#fff7e6"
+    readonly property color success: dark?"#68c8a9":"#18856c"
+    readonly property color successSurface: dark?"#1e3c37":"#e0f5ef"
+    readonly property color infoSurface: dark?"#1e3549":"#edf6fb"
+    readonly property color switchOff: dark?"#485b70":"#c5d0dc"
+}

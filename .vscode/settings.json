@@ -1,0 +1,8 @@
+{
+    "cmake.options.statusBarVisibility": "visible",
+    "qt-core.qtInstallationRoot": "/home/kwille/Qt",
+    "cmake.cmakePath": "/home/kwille/Qt/Tools/CMake/bin/cmake",
+    "cmake.useCMakePresets": "always",
+    "cmake.configureOnOpen": true,
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+}

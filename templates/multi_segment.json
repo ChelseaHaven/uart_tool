@@ -1,0 +1,158 @@
+{
+  "format": "uart-tool.binary-protocol",
+  "version": 1,
+  "id": "multi_segment",
+  "name": "多段命令帧",
+  "configuration": {
+    "header": "AA 55",
+    "mode": "fixed",
+    "frameSize": 12,
+    "maxFrameSize": 4096,
+    "lengthOffset": 2,
+    "lengthBytes": 2,
+    "lengthEndian": "little",
+    "lengthMeaning": "payload",
+    "payloadOffset": 3,
+    "lengthIncludesChecksum": false,
+    "checksum": "none",
+    "checksumEndian": "little",
+    "checksumStart": 0,
+    "checksumEnd": -1,
+    "trailerBytes": 0,
+    "checks": [],
+    "commandOffset": -1,
+    "commandBytes": 2,
+    "commandEndian": "little",
+    "autoLayout": true,
+    "tail": "",
+    "structure": [
+      {
+        "kind": "header",
+        "hex": "AA 55"
+      },
+      {
+        "kind": "command",
+        "bytes": 1,
+        "endian": "little",
+        "value": "0x1",
+        "messages": [
+          {
+            "command": "0x1",
+            "name": "命令 0x1"
+          }
+        ]
+      },
+      {
+        "kind": "payload",
+        "fields": [
+          {
+            "name": "value",
+            "type": "float32",
+            "count": 1,
+            "endian": "little",
+            "variable": false,
+            "offset": 0
+          }
+        ],
+        "variants": {
+          "0x1": [
+            {
+              "name": "value",
+              "type": "float32",
+              "count": 1,
+              "endian": "little",
+              "variable": false,
+              "offset": 0
+            }
+          ]
+        }
+      },
+      {
+        "kind": "command",
+        "bytes": 1,
+        "endian": "little",
+        "value": "0x2",
+        "messages": [
+          {
+            "command": "0x2",
+            "name": "命令 0x2"
+          }
+        ]
+      },
+      {
+        "kind": "payload",
+        "fields": [
+          {
+            "name": "value",
+            "type": "float32",
+            "count": 1,
+            "endian": "little",
+            "variable": false,
+            "offset": 0
+          }
+        ],
+        "variants": {
+          "0x2": [
+            {
+              "name": "value",
+              "type": "float32",
+              "count": 1,
+              "endian": "little",
+              "variable": false,
+              "offset": 0
+            }
+          ]
+        }
+      }
+    ],
+    "fields": [
+      {
+        "name": "命令字1",
+        "type": "uint8",
+        "count": 1,
+        "endian": "little",
+        "variable": false,
+        "offset": 2
+      },
+      {
+        "name": "数据区1.value",
+        "type": "float32",
+        "count": 1,
+        "endian": "little",
+        "variable": false,
+        "offset": 3
+      },
+      {
+        "name": "命令字2",
+        "type": "uint8",
+        "count": 1,
+        "endian": "little",
+        "variable": false,
+        "offset": 7
+      },
+      {
+        "name": "数据区2.value",
+        "type": "float32",
+        "count": 1,
+        "endian": "little",
+        "variable": false,
+        "offset": 8
+      }
+    ],
+    "templateId": "multi_segment",
+    "commandMatches": [
+      {
+        "offset": 2,
+        "bytes": 1,
+        "endian": "little",
+        "value": "0x1"
+      },
+      {
+        "offset": 7,
+        "bytes": 1,
+        "endian": "little",
+        "value": "0x2"
+      }
+    ]
+  }
+}

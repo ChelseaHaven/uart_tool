@@ -1,0 +1,7 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {"label": "UART: Configure", "type": "process", "command": "/home/kwille/Qt/Tools/CMake/bin/cmake", "args": ["--preset","qt-debug"], "options": {"cwd":"${workspaceFolder}"}, "problemMatcher": []},
+    {"label": "UART: Build", "type": "process", "command": "/home/kwille/Qt/Tools/CMake/bin/cmake", "args": ["--build","--preset","qt-debug"], "options": {"cwd":"${workspaceFolder}"}, "dependsOn":"UART: Configure", "dependsOrder":"sequence", "problemMatcher":["$gcc"], "group":{"kind":"build","isDefault":true}}
+  ]
+}
