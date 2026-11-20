@@ -7,12 +7,13 @@ AppButton {
     default property alias menuItems: picker.contentData
     property alias menu: picker
     property string categoryPrefix: ""
+    property bool showIndicator: true
     readonly property int submenuWidth: 216
     property int rightCascadeWidth: 0
     signal opening()
 
     implicitHeight: 37
-    leftPadding: 11; rightPadding: 12
+    leftPadding: showIndicator ? 11 : 12; rightPadding: 12
     onClicked: {
         const buttonX=button.mapToItem(null,0,0).x
         const windowWidth=button.Window.window.width
@@ -39,10 +40,11 @@ AppButton {
             text: button.text
             textFormat: Text.PlainText
             elide: Text.ElideRight
-            font.pixelSize: 13
-            color: Theme.text
+            horizontalAlignment: button.showIndicator ? Text.AlignLeft : Text.AlignHCenter
+            font: button.showIndicator ? Qt.font({pixelSize: 13}) : button.font
+            color: button.showIndicator || button.enabled ? Theme.text : Theme.disabledText
         }
-        Text { text: "⌄"; font.pixelSize: 18; color: Theme.secondary }
+        Text { visible: button.showIndicator; text: "⌄"; font.pixelSize: 18; color: Theme.secondary }
     }
     Menu {
         id: picker

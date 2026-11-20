@@ -277,8 +277,8 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Text { text: (index+1)+". "+dialog.label(modelData.kind); font.bold: true; color: Theme.accentText; Layout.preferredWidth: 110 }
-                            TextField { objectName: "structureHex"+index; visible: modelData.kind==="header" || modelData.kind==="tail"; Layout.fillWidth: true; text: modelData.hex || ""; placeholderText: "HEX，例如 AA 55"; onEditingFinished: dialog.change(blockCard.index,"hex",text) }
-                            TextField { visible: modelData.kind==="field"; Layout.preferredWidth: 130; text: modelData.name || ""; placeholderText: "名称"; onEditingFinished: dialog.change(blockCard.index,"name",text) }
+                            AppTextField { objectName: "structureHex"+index; visible: modelData.kind==="header" || modelData.kind==="tail"; Layout.fillWidth: true; text: modelData.hex || ""; placeholderText: "HEX，例如 AA 55"; onEditingFinished: dialog.change(blockCard.index,"hex",text) }
+                            AppTextField { visible: modelData.kind==="field"; Layout.preferredWidth: 130; text: modelData.name || ""; placeholderText: "名称"; onEditingFinished: dialog.change(blockCard.index,"name",text) }
                             ConfigCombo {
                                 objectName: modelData.kind==="command"?"structureCommandSelector":""; visible: modelData.kind==="command"; Layout.fillWidth: false; Layout.preferredWidth: 150
                                 model: modelData.messages || []; textRole: "command"; currentIndex: dialog.commandIndex(modelData)
@@ -289,7 +289,7 @@ Item {
                             AppButton { visible: modelData.kind==="command"; text: "删除命令"; implicitWidth: 80; enabled: (modelData.messages || []).length>1; onClicked: dialog.removeCommand(blockCard.index) }
                             ConfigCombo { visible: modelData.kind==="field"; Layout.preferredWidth: 120; Layout.fillWidth: false; model: ["uint8","int8","uint16","int16","uint32","int32","float32","uint64","int64","float64"]; currentIndex: Math.max(0,model.indexOf(modelData.type)); onActivated: dialog.change(blockCard.index,"type",currentText) }
                             ConfigCombo { visible: modelData.kind==="length" || modelData.kind==="command"; Layout.preferredWidth: 100; Layout.fillWidth: false; model: ["1 字节","2 字节","4 字节"]; currentIndex: Math.max(0,[1,2,4].indexOf(modelData.bytes)); onActivated: dialog.change(blockCard.index,"bytes",[1,2,4][currentIndex]) }
-                            SpinBox { visible: modelData.kind==="padding"; from: 1; to: 16; value: modelData.bytes || 1; onValueModified: dialog.change(blockCard.index,"bytes",value) }
+                            AppSpinBox { visible: modelData.kind==="padding"; from: 1; to: 16; value: modelData.bytes || 1; onValueModified: dialog.change(blockCard.index,"bytes",value) }
                             Text { visible: modelData.kind==="payload"; text: "字段自动排列，变长数组由长度字段决定"; color: Theme.secondary; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                             AppButton { objectName: "structureCheck"+index; visible: modelData.kind==="check"; implicitWidth: 230; text: modelData.rule?modelData.rule.name+" · 选择算法":"选择算法"; onClicked: { dialog.editingCheck=index; let r=dialog.clone(modelData.rule); r.coverageMode=modelData.coverage; checksumDialog.rule=r; checksumDialog.open() } }
                             Item { Layout.fillWidth: true }
@@ -313,7 +313,7 @@ Item {
                         RowLayout {
                             visible: modelData.kind==="command"; Layout.fillWidth: true
                             FieldLabel { text: "名称" }
-                            TextField {
+                            AppTextField {
                                 objectName: modelData.kind==="command"?"commandDisplayName":""; Layout.fillWidth: true
                                 placeholderText: "例如：轮速反馈、IMU 数据"; maximumLength: 80; selectByMouse: true
                                 text: dialog.commandName(modelData)
@@ -335,7 +335,7 @@ Item {
             Text { text: "命令字和数据区可重复添加。数据区归属于前面最近的命令字；各处命令独立选择。变长数组只放在最后一个数据区末尾。"; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.secondary; font.pixelSize: 12 }
             RowLayout {
                 FieldLabel { text: "最大帧长（字节）" }
-                SpinBox { id: maximum; from: 1; to: 65536; editable: true }
+                AppSpinBox { id: maximum; from: 1; to: 65536; editable: true }
             }
     }
     ChecksumRuleEditor {
@@ -347,8 +347,8 @@ Item {
         parent: dialog.popupLayer || Overlay.overlay; modal: true; title: "添加命令"; width: 380
         anchors.centerIn: parent
         contentItem: ColumnLayout {
-            TextField { id: newCommandValue; objectName: "newCommandValue"; Layout.fillWidth: true; placeholderText: "命令值，例如 0x0103"; selectByMouse: true; onAccepted: newCommandName.forceActiveFocus() }
-            TextField { id: newCommandName; objectName: "newCommandName"; Layout.fillWidth: true; placeholderText: "名称（可选），例如：轮速反馈"; maximumLength: 80; selectByMouse: true; onAccepted: { if(dialog.addCommand(newCommandValue.text,text)) newCommandDialog.close() } }
+            AppTextField { id: newCommandValue; objectName: "newCommandValue"; Layout.fillWidth: true; placeholderText: "命令值，例如 0x0103"; selectByMouse: true; onAccepted: newCommandName.forceActiveFocus() }
+            AppTextField { id: newCommandName; objectName: "newCommandName"; Layout.fillWidth: true; placeholderText: "名称（可选），例如：轮速反馈"; maximumLength: 80; selectByMouse: true; onAccepted: { if(dialog.addCommand(newCommandValue.text,text)) newCommandDialog.close() } }
             Text { text: dialog.errorText; visible: text.length>0; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.error }
         }
         footer: RowLayout {

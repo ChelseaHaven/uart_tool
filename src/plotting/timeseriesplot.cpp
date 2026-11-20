@@ -3,14 +3,12 @@
 #include <QPolygonF>
 #include <QWheelEvent>
 #include <QMouseEvent>
-#include <QCursor>
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-TimeSeriesPlot::TimeSeriesPlot(QQuickItem *parent):QQuickPaintedItem(parent) {
+TimeSeriesPlot::TimeSeriesPlot(QQuickItem *parent):InteractivePlot(parent) {
     setAntialiasing(true); setClip(true);
-    setAcceptedMouseButtons(Qt::LeftButton|Qt::MiddleButton|Qt::RightButton);
 }
 void TimeSeriesPlot::setStream(NumericStream *stream) {
     if(m_stream==stream) return;
@@ -18,7 +16,7 @@ void TimeSeriesPlot::setStream(NumericStream *stream) {
     m_stream=stream;
     if(stream) {
         connect(stream,&NumericStream::samplesChanged,this,[this] { if(!m_paused) refresh(); });
-        connect(stream,&NumericStream::channelsChanged,this,[this] { if(!m_stream || m_stream->channels().isEmpty()) { m_points.clear(); m_view.reset(); emit viewChanged(); update(); } });
+        connect(stream,&NumericStream::channelsChanged,this,[this] { if(!m_stream || m_stream->channels().isEmpty()) { m_points.clear(); m_view.reset(); fitVisibleY(); emit viewChanged(); update(); } });
         connect(stream,&QObject::destroyed,this,[this] { m_points.clear(); update(); });
     }
     refresh(); emit streamChanged();
@@ -27,6 +25,20 @@ void TimeSeriesPlot::setChannels(const QStringList &channels) {
     const auto limited=channels.sliced(0,std::min<qsizetype>(8,channels.size()));
     if(m_channels==limited) return;
     m_channels=limited; refresh(); emit channelsChanged();
+}
+void TimeSeriesPlot::setReferenceEnabled(bool enabled) {
+    if (m_referenceEnabled == enabled) return;
+    m_referenceEnabled = enabled;
+    fitVisibleY();
+    update();
+    emit referenceChanged();
+}
+void TimeSeriesPlot::setReferenceValue(double value) {
+    if (!std::isfinite(value) || m_referenceValue == value) return;
+    m_referenceValue = value;
+    fitVisibleY();
+    update();
+    emit referenceChanged();
 }
 void TimeSeriesPlot::setPaused(bool paused) {
     if(m_paused==paused) return;
@@ -51,7 +63,9 @@ void TimeSeriesPlot::refresh() {
 QRectF TimeSeriesPlot::plotArea() const { return {62,12,std::max(1.,width()-76),std::max(1.,height()-40)}; }
 void TimeSeriesPlot::fitVisibleY() {
     const auto view=m_view.range(m_end);
-    long double low=std::numeric_limits<double>::max(), high=-std::numeric_limits<double>::max(); bool have=false;
+    long double low = m_referenceEnabled ? m_referenceValue : std::numeric_limits<double>::max();
+    long double high = m_referenceEnabled ? m_referenceValue : -std::numeric_limits<double>::max();
+    bool have = m_referenceEnabled;
     for(const auto &series:m_points) for(const auto &point:series) if(point.x()>=view.left && point.x()<=view.right) {
         low=std::min(low,(long double)point.y()); high=std::max(high,(long double)point.y()); have=true;
     }
@@ -69,18 +83,14 @@ void TimeSeriesPlot::wheelEvent(QWheelEvent *event) {
     m_view.zoom(std::exp(-std::clamp(steps,-10.,10.)*0.18),x,y,anchorX,anchorY,m_end);
     fitVisibleY(); emit viewChanged(); update(); event->accept();
 }
-void TimeSeriesPlot::mousePressEvent(QMouseEvent *event) {
-    const auto area=plotArea(); m_lastPointer=event->position();
-    m_panX=m_lastPointer.x()>=area.left(); m_panY=m_lastPointer.y()<=area.bottom();
-    setCursor(QCursor(Qt::ClosedHandCursor)); event->accept();
+void TimeSeriesPlot::panBy(const QPointF &fraction,bool x,bool y) {
+    m_view.pan(fraction.x(),fraction.y(),x,y,m_end);
+    fitVisibleY(); emit viewChanged(); update();
 }
-void TimeSeriesPlot::mouseMoveEvent(QMouseEvent *event) {
-    const auto area=plotArea(); const auto delta=event->position()-m_lastPointer; m_lastPointer=event->position();
-    m_view.pan(-delta.x()/area.width(),delta.y()/area.height(),m_panX,m_panY,m_end);
-    fitVisibleY(); emit viewChanged(); update(); event->accept();
+void TimeSeriesPlot::mouseDoubleClickEvent(QMouseEvent *event) {
+    resetView();
+    event->accept();
 }
-void TimeSeriesPlot::mouseReleaseEvent(QMouseEvent *event) { m_panX=m_panY=false; unsetCursor(); event->accept(); }
-void TimeSeriesPlot::mouseDoubleClickEvent(QMouseEvent *event) { resetView(); event->accept(); }
 void TimeSeriesPlot::paint(QPainter *painter) {
     const auto area=plotArea();
     if(width()<100 || height()<65) return;
@@ -88,16 +98,17 @@ void TimeSeriesPlot::paint(QPainter *painter) {
     const auto view=m_view.range(m_end);
     const auto low=view.low,high=view.high;
     auto textNumber=[](long double n) { const auto bound=(long double)std::numeric_limits<double>::max(); return QString::number(double(std::clamp(n,-bound,bound)),'g',4); };
-    painter->setPen(QPen(m_grid,1));
-    for(int i=0;i<=5;++i) {
-        const double x=area.left()+area.width()*i/5, y=area.top()+area.height()*i/5;
-        painter->drawLine(QPointF(x,area.top()),QPointF(x,area.bottom())); painter->drawLine(QPointF(area.left(),y),QPointF(area.right(),y));
-        painter->setPen(m_text);
-        painter->drawText(QRectF(0,y-7,54,16),Qt::AlignRight|Qt::AlignVCenter,textNumber(high-(high-low)*i/5));
-        painter->drawText(QRectF(x-22,area.bottom()+7,44,16),Qt::AlignCenter,QString::number(view.left-m_end+(view.right-view.left)*i/5,'g',3)+" s");
-        painter->setPen(QPen(m_grid,1));
-    }
+    drawGrid(painter,m_text,m_grid,yLabelWidth(),
+             [&](double fraction) {
+                 return QString::number(view.left-m_end+(view.right-view.left)*fraction,'g',3)+QStringLiteral(" s");
+             },
+             [&](double fraction) { return textNumber(low+(high-low)*fraction); });
     painter->save(); painter->setClipRect(area.adjusted(-1,-1,1,1));
+    if (m_referenceEnabled && m_referenceValue >= low && m_referenceValue <= high) {
+        const double y = area.bottom() - double((m_referenceValue - low) / (high - low)) * area.height();
+        painter->setPen(QPen(m_text, 1.5, Qt::DashLine));
+        painter->drawLine(QPointF(area.left(), y), QPointF(area.right(), y));
+    }
     for(int index=0;index<m_points.size();++index) {
         QPolygonF curve; int bucket=-1; double minY=0,maxY=0,lastY=0,bucketX=0;
         auto flush=[&] { if(bucket<0) return; curve.append({bucketX,minY}); if(maxY!=minY) curve.append({bucketX,maxY}); if(lastY!=maxY) curve.append({bucketX,lastY}); };
@@ -116,4 +127,10 @@ void TimeSeriesPlot::paint(QPainter *painter) {
         if(curve.size()==1) painter->drawEllipse(curve.first(),2,2); else painter->drawPolyline(curve);
     }
     painter->restore();
+    if (focusActive()) {
+        const auto point=focusPosition();
+        const double x=view.left-m_end+(view.right-view.left)*(point.x()-area.left())/area.width();
+        const auto y=low+(high-low)*(area.bottom()-point.y())/area.height();
+        drawFocus(painter,m_text,m_grid,QString::number(x,'g',6)+QStringLiteral(" s"),textNumber(y));
+    }
 }

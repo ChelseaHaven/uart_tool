@@ -1,5 +1,4 @@
 #include "xyplot.h"
-#include <QCursor>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPolygonF>
@@ -8,12 +7,13 @@
 #include <cmath>
 #include <limits>
 
-void XYPlot::Axis::fit(double minimum,double maximum) {
+void XYPlot::Axis::fit(double minimum,double maximum,bool pad) {
     if(!automatic) return;
     scale=std::max({std::abs(minimum),std::abs(maximum),std::numeric_limits<double>::min()});
     if(minimum==maximum && scale<1) scale=1;
     low=minimum/scale;
     high=maximum/scale;
+    if (!pad) return;
     const double padding=high==low?0.1:std::max((high-low)*0.08,1e-12);
     low-=padding;
     high+=padding;
@@ -43,10 +43,9 @@ QString XYPlot::Axis::label(double fraction) const {
     return QString::number(value,'g',4);
 }
 
-XYPlot::XYPlot(QQuickItem *parent):QQuickPaintedItem(parent) {
+XYPlot::XYPlot(QQuickItem *parent):InteractivePlot(parent) {
     setAntialiasing(true);
     setClip(true);
-    setAcceptedMouseButtons(Qt::LeftButton);
     connect(this,&XYPlot::colorsChanged,this,[this] { update(); });
 }
 void XYPlot::setStream(NumericStream *stream) {
@@ -79,6 +78,19 @@ void XYPlot::setPaused(bool paused) {
     if(!paused) refresh();
     emit pausedChanged();
 }
+void XYPlot::setXReferenceEnabled(bool enabled) { setReference(m_xReference,enabled,m_xReference.value); }
+void XYPlot::setYReferenceEnabled(bool enabled) { setReference(m_yReference,enabled,m_yReference.value); }
+void XYPlot::setXReferenceValue(double value) { setReference(m_xReference,m_xReference.enabled,value); }
+void XYPlot::setYReferenceValue(double value) { setReference(m_yReference,m_yReference.enabled,value); }
+
+void XYPlot::setReference(Reference &reference,bool enabled,double value) {
+    if (!std::isfinite(value) || (reference.enabled==enabled && reference.value==value)) return;
+    reference={enabled,value};
+    fitAxes();
+    update();
+    emit referencesChanged();
+}
+
 void XYPlot::refresh() {
     const auto oldCount=m_points.size();
     m_points=m_stream && !m_xKey.isEmpty() && !m_yKey.isEmpty()?m_stream->xyPoints(m_xKey,m_yKey):QVector<QPointF>();
@@ -88,19 +100,25 @@ void XYPlot::refresh() {
 }
 void XYPlot::fitAxes() {
     if(!m_xAxis.automatic && !m_yAxis.automatic) return;
-    if(m_points.isEmpty()) {
-        m_xAxis.fit(-1,1);
-        m_yAxis.fit(-1,1);
-        return;
-    }
-    double minX=m_points.first().x(), maxX=minX;
-    double minY=m_points.first().y(), maxY=minY;
+    const bool hasPoints=!m_points.isEmpty();
+    double minX=hasPoints ? m_points.first().x() : -1;
+    double maxX=hasPoints ? minX : 1;
+    double minY=hasPoints ? m_points.first().y() : -1;
+    double maxY=hasPoints ? minY : 1;
     for(const auto &point:m_points) {
         minX=std::min(minX,point.x()); maxX=std::max(maxX,point.x());
         minY=std::min(minY,point.y()); maxY=std::max(maxY,point.y());
     }
-    m_xAxis.fit(minX,maxX);
-    m_yAxis.fit(minY,maxY);
+    if (m_xReference.enabled) {
+        minX=std::min(minX,m_xReference.value);
+        maxX=std::max(maxX,m_xReference.value);
+    }
+    if (m_yReference.enabled) {
+        minY=std::min(minY,m_yReference.value);
+        maxY=std::max(maxY,m_yReference.value);
+    }
+    m_xAxis.fit(minX,maxX,hasPoints || minX < -1 || maxX > 1);
+    m_yAxis.fit(minY,maxY,hasPoints || minY < -1 || maxY > 1);
 }
 void XYPlot::resetView() {
     m_xAxis={};
@@ -117,66 +135,32 @@ void XYPlot::wheelEvent(QWheelEvent *event) {
     const bool zoomX=position.x()>=area.left();
     const bool zoomY=position.y()<=area.bottom();
     const double steps=event->angleDelta().y()?event->angleDelta().y()/120.:event->pixelDelta().y()/40.;
-    if(m_points.isEmpty() || (!zoomX && !zoomY) || steps==0) { event->ignore(); return; }
+    if((!zoomX && !zoomY) || steps==0) { event->ignore(); return; }
     const double factor=std::exp(-std::clamp(steps,-10.,10.)*0.18);
     if(zoomX) m_xAxis.zoom(factor,std::clamp((position.x()-area.left())/area.width(),0.,1.));
     if(zoomY) m_yAxis.zoom(factor,std::clamp((area.bottom()-position.y())/area.height(),0.,1.));
     update();
     event->accept();
 }
-void XYPlot::mousePressEvent(QMouseEvent *event) {
-    const auto area=plotArea();
-    m_lastPointer=event->position();
-    m_panX=!m_points.isEmpty() && m_lastPointer.x()>=area.left();
-    m_panY=!m_points.isEmpty() && m_lastPointer.y()<=area.bottom();
-    if(!m_panX && !m_panY) { event->ignore(); return; }
-    setCursor(QCursor(Qt::ClosedHandCursor));
-    event->accept();
-}
-void XYPlot::mouseMoveEvent(QMouseEvent *event) {
-    if(!m_panX && !m_panY) { event->ignore(); return; }
-    const auto area=plotArea();
-    const auto delta=event->position()-m_lastPointer;
-    m_lastPointer=event->position();
-    if(m_panX) m_xAxis.pan(-delta.x()/area.width());
-    if(m_panY) m_yAxis.pan(delta.y()/area.height());
+void XYPlot::panBy(const QPointF &fraction,bool x,bool y) {
+    if (x) m_xAxis.pan(fraction.x());
+    if (y) m_yAxis.pan(fraction.y());
     update();
+}
+void XYPlot::mouseDoubleClickEvent(QMouseEvent *event) {
+    resetView();
     event->accept();
 }
-void XYPlot::mouseUngrabEvent() {
-    m_panX=m_panY=false;
-    unsetCursor();
-}
-void XYPlot::mouseReleaseEvent(QMouseEvent *event) {
-    mouseUngrabEvent();
-    event->accept();
-}
-void XYPlot::mouseDoubleClickEvent(QMouseEvent *event) { resetView(); event->accept(); }
 
 void XYPlot::paint(QPainter *painter) {
-    if(width()<100 || height()<55 || m_points.isEmpty()) return;
+    if(width()<100 || height()<55) return;
     const auto area=plotArea();
     QFont labels=painter->font();
     labels.setPixelSize(10);
     painter->setFont(labels);
-    const int columns=std::clamp(int(area.width()/70),2,8);
-    for(int i=0;i<=columns;++i) {
-        const double t=double(i)/columns;
-        const double x=area.left()+t*area.width();
-        painter->setPen(m_grid);
-        painter->drawLine(QPointF(x,area.top()),QPointF(x,area.bottom()));
-        painter->setPen(m_text);
-        painter->drawText(QRectF(x-29,area.bottom()+5,58,17),Qt::AlignCenter,m_xAxis.label(t));
-    }
-    const int rows=std::clamp(int(area.height()/40),2,6);
-    for(int i=0;i<=rows;++i) {
-        const double t=double(i)/rows;
-        const double y=area.bottom()-t*area.height();
-        painter->setPen(m_grid);
-        painter->drawLine(QPointF(area.left(),y),QPointF(area.right(),y));
-        painter->setPen(m_text);
-        painter->drawText(QRectF(0,y-8,58,16),Qt::AlignRight|Qt::AlignVCenter,m_yAxis.label(t));
-    }
+    drawGrid(painter,m_text,m_grid,58,
+             [this](double fraction) { return m_xAxis.label(fraction); },
+             [this](double fraction) { return m_yAxis.label(fraction); });
 
     QPolygonF trace;
     trace.reserve(m_points.size());
@@ -185,10 +169,32 @@ void XYPlot::paint(QPainter *painter) {
                              area.bottom()-m_yAxis.fraction(point.y())*area.height()));
     painter->save();
     painter->setClipRect(area.adjusted(-1,-1,1,1));
-    painter->setPen(QPen(m_trace,1.6));
-    if(trace.size()>1) painter->drawPolyline(trace);
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(m_trace);
-    painter->drawEllipse(trace.constLast(),3.5,3.5);
+    painter->setPen(QPen(m_text,1.5,Qt::DashLine));
+    if (m_xReference.enabled) {
+        const auto fraction=m_xAxis.fraction(m_xReference.value);
+        if (fraction>=0 && fraction<=1) {
+            const double x=area.left()+fraction*area.width();
+            painter->drawLine(QPointF(x,area.top()),QPointF(x,area.bottom()));
+        }
+    }
+    if (m_yReference.enabled) {
+        const auto fraction=m_yAxis.fraction(m_yReference.value);
+        if (fraction>=0 && fraction<=1) {
+            const double y=area.bottom()-fraction*area.height();
+            painter->drawLine(QPointF(area.left(),y),QPointF(area.right(),y));
+        }
+    }
+    if (!trace.isEmpty()) {
+        painter->setPen(QPen(m_trace,1.6));
+        if (trace.size()>1) painter->drawPolyline(trace);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(m_trace);
+        painter->drawEllipse(trace.constLast(),3.5,3.5);
+    }
     painter->restore();
+    if (focusActive()) {
+        const auto point=focusPosition();
+        drawFocus(painter,m_text,m_grid,m_xAxis.label((point.x()-area.left())/area.width()),
+                  m_yAxis.label((area.bottom()-point.y())/area.height()));
+    }
 }

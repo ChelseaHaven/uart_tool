@@ -7,15 +7,29 @@ ComponentFrame {
     required property QtObject sender
     required property int instanceId
     property string commandName: ""
+    property bool editingName: false
+    signal renameRequested(string name)
     objectName: "quickSendCard_"+instanceId
     title: commandName || "快捷发送"
+    titleEditor: editingName ? nameEditor : null
+
+    function finishRenaming(save) {
+        if (save && titleEditorItem)
+            renameRequested(titleEditorItem.text.trim())
+        editingName=false
+        forceActiveFocus()
+    }
 
     headerActions: [
         AppButton {
             id: renameButton
             objectName: "renameQuickSend"
-            text: "命名"; implicitWidth: 50; implicitHeight: 29
-            onClicked: renamePopup.open()
+            text: card.editingName ? "确定" : "命名"
+            implicitWidth: 50; implicitHeight: 29
+            onClicked: {
+                if (card.editingName) card.finishRenaming(true)
+                else card.editingName=true
+            }
         },
         ConfigCombo {
             id: format
@@ -30,46 +44,40 @@ ComponentFrame {
     ]
 
     SendPanel {
+        id: sendEditor
         anchors.fill: parent
         sender: card.sender
         formatIndex: format.currentIndex
     }
 
-    Popup {
-        id: renamePopup
-        objectName: "quickSendRenamePopup"
-        parent: card
-        width: Math.min(258,card.width-16)
-        x: Math.max(8,card.width-width-8); y: 42
-        padding: 10
-        focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        onAboutToShow: nameInput.text=card.commandName
-        onOpened: { nameInput.forceActiveFocus(); nameInput.selectAll() }
-        function applyName() {
-            card.commandName=nameInput.text.trim()
-            close()
-        }
+    function snapshotSend() { return sendEditor.snapshot() }
+    function restoreSend(config) {
+        format.currentIndex=config.mode
+        sendEditor.restore(config)
+    }
 
-        background: Rectangle { color: Theme.surface; border.color: Theme.border; radius: 7 }
-        contentItem: RowLayout {
-            spacing: 8
-            TextField {
-                id: nameInput
-                objectName: "quickSendName"
-                focus: true
-                Layout.fillWidth: true
-                placeholderText: "例如 轮速 PID"
-                Accessible.name: "指令名称"
-                maximumLength: 40
-                color: Theme.text
-                selectByMouse: true
-                onAccepted: renamePopup.applyName()
+    Component {
+        id: nameEditor
+        AppTextField {
+            id: nameInput
+            objectName: "quickSendName"
+            text: card.commandName
+            placeholderText: "输入名称"
+            Accessible.name: "指令名称"
+            maximumLength: 40
+            selectByMouse: true
+            padding: 5
+            background: Rectangle {
+                color: Theme.input
+                border.color: nameInput.activeFocus ? Theme.accent : Theme.border
+                radius: 5
             }
-            AppButton {
-                text: "确定"; implicitWidth: 54; implicitHeight: 32
-                onClicked: renamePopup.applyName()
+            Component.onCompleted: {
+                forceActiveFocus()
+                selectAll()
             }
+            onAccepted: card.finishRenaming(true)
+            Keys.onEscapePressed: card.finishRenaming(false)
         }
     }
 }

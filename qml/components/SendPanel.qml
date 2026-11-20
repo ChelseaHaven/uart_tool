@@ -17,6 +17,21 @@ Item {
         && Number(intervalInput.text)>0 && Number(intervalInput.text)<=2147483647
     readonly property bool sendEnabled: sendTimer.running || (canSend && (!repeatToggle.checked || intervalValid))
     readonly property string sendLabel: sendTimer.running?"停止":"发送"
+    function snapshot() {
+        return {mode:formatIndex,text:input.text,ending:endingCombo.currentValue,
+                repeat:repeatToggle.checked,intervalMs:intervalInput.text,
+                parameters:parameterEditor.snapshotParameters()}
+    }
+
+    function restore(config) {
+        sendTimer.stop()
+        input.text=config.text
+        endingCombo.currentIndex=endingCombo.indexOfValue(config.ending)
+        repeatToggle.checked=config.repeat
+        intervalInput.text=config.intervalMs
+        parameterEditor.restoreParameters(config.parameters)
+    }
+
     function submit() {
         if(sendTimer.running) {
             sendTimer.stop()
@@ -88,11 +103,16 @@ Item {
                     color: Theme.text; selectionColor: Theme.selection; selectedTextColor: Theme.selectionText
                     font.family: "monospace"; font.pixelSize: 13; padding: 8
                     background: null
+                    persistentSelection: true
+                    ContextMenu.menu: null
+                    TextEditingMenu { editor: input }
                     Keys.onPressed: function(event) {
-                        if((event.key===Qt.Key_Return || event.key===Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) {
+                        if (event.matches(StandardKey.Copy)) input.copy()
+                        else if (event.matches(StandardKey.Paste)) input.paste()
+                        else if ((event.key===Qt.Key_Return || event.key===Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier))
                             panel.submit()
-                            event.accepted=true
-                        }
+                        else return
+                        event.accepted=true
                     }
                 }
             }
@@ -120,7 +140,7 @@ Item {
                 text: "定时发送"; padding: 0; spacing: 4; font.pixelSize: 12
                 enabled: !sendTimer.running
             }
-            TextField {
+            AppTextField {
                 id: intervalInput
                 objectName: "timedSendInterval"
                 Layout.preferredWidth: 52

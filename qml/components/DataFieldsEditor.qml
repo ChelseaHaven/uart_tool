@@ -13,7 +13,7 @@ Item {
     implicitHeight: column.implicitHeight
     function sizeOf(type) { return type==="float64" || type.endsWith("64")?8:type==="float32" || type.endsWith("32")?4:type.endsWith("16")?2:1 }
     function setField(index,key,value) { fieldModel.setProperty(index,key,value); revision++; errorText="" }
-    component Input: TextField {
+    component Input: AppTextField {
         implicitHeight: 36; color: Theme.text; selectByMouse: true
         background: Rectangle { radius: 5; color: Theme.surface; border.color: Theme.border }
     }

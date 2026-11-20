@@ -57,7 +57,7 @@ Dialog {
         ColumnLayout {
             id: column; width: scroll.availableWidth; spacing: 12
             FieldLabel { text: "名称" }
-            TextField { id: nameInput; Layout.fillWidth: true }
+            AppTextField { id: nameInput; Layout.fillWidth: true }
             CheckBox { id: enabledCheck; text: "启用校验（关闭时仍保留字节）" }
             FieldLabel { text: "算法（选择预设后无需填写 CRC 参数）" }
             ConfigCombo {
@@ -71,7 +71,7 @@ Dialog {
                 FieldLabel { text: "结果字节序" }
                 ConfigCombo { id: location; visible: !dialog.structureMode; model: ["帧尾（自动）","指定偏移"] }
                 ConfigCombo { id: order; model: ["小端","大端"] }
-                SpinBox { id: offset; visible: !dialog.structureMode && location.currentIndex===1; from: 0; to: 65535; editable: true }
+                AppSpinBox { id: offset; visible: !dialog.structureMode && location.currentIndex===1; from: 0; to: 65535; editable: true }
                 CheckBox { id: early; visible: !dialog.structureMode && location.currentIndex===1; text: "前缀收齐后提前校验" }
             }
             FieldLabel { text: "计算范围" }
@@ -79,20 +79,20 @@ Dialog {
             RowLayout {
                 visible: coverage.currentIndex===2; Layout.fillWidth: true
                 FieldLabel { text: "起点（含）" }
-                SpinBox { id: start; from: -65536; to: 65535; editable: true }
+                AppSpinBox { id: start; from: -65536; to: 65535; editable: true }
                 FieldLabel { text: "终点（不含）" }
-                SpinBox { id: end; from: -65536; to: 65536; editable: true }
+                AppSpinBox { id: end; from: -65536; to: 65536; editable: true }
             }
             GridLayout {
                 visible: algorithm.currentIndex===6; columns: 2; uniformCellWidths: true; Layout.fillWidth: true
                 FieldLabel { text: "位宽" }
                 FieldLabel { text: "标准多项式（如 0x1021）" }
                 ConfigCombo { id: bits; model: [8,16,32] }
-                TextField { id: polynomial; Layout.fillWidth: true }
+                AppTextField { id: polynomial; Layout.fillWidth: true }
                 FieldLabel { text: "初始值" }
                 FieldLabel { text: "最终异或" }
-                TextField { id: initial; Layout.fillWidth: true }
-                TextField { id: xorOut; Layout.fillWidth: true }
+                AppTextField { id: initial; Layout.fillWidth: true }
+                AppTextField { id: xorOut; Layout.fillWidth: true }
                 CheckBox { id: reflectIn; text: "输入反转" }
                 CheckBox { id: reflectOut; text: "输出反转" }
             }

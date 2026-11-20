@@ -10,7 +10,7 @@ ComboBox {
     font.pixelSize: 13
     leftPadding: 11; rightPadding: 27
     palette.text: Theme.text; palette.buttonText: Theme.text; palette.base: Theme.surface
-    contentItem: TextField {
+    contentItem: AppTextField {
         text: combo.editable ? combo.editText : combo.displayText
         font: combo.font
         enabled: combo.editable

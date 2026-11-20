@@ -7,6 +7,7 @@ ApplicationWindow {
     id: root
     width: 1200; height: 900
     minimumWidth: 1044; minimumHeight: 760
+    flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
     visible: true; title: "UART Tool · 串口接收"
     color: Theme.window
     font.family: "Noto Sans CJK SC"
@@ -20,9 +21,16 @@ ApplicationWindow {
     palette.light: Theme.border; palette.dark: Theme.divider; palette.shadow: Theme.divider
     palette.disabled.text: Theme.disabledText; palette.disabled.buttonText: Theme.disabledText
     palette.disabled.windowText: Theme.disabledText; palette.disabled.base: Theme.disabledSurface
-    onClosing: { serialDock.shutdown(); componentDock.shutdown(); receiveDock.shutdown() }
+    onClosing: {
+        componentArea.saveLayout()
+        const layout = dockLayout.snapshotLayout()
+        layout.leftPage = root.leftPage
+        appSettings.saveDockLayout(layout)
+        serialDock.shutdown(); componentDock.shutdown(); receiveDock.shutdown()
+    }
     property bool settingsOpen: false
-    property int leftPage: 0
+    readonly property var savedDockLayout: appSettings.loadDockLayout()
+    property int leftPage: savedDockLayout.leftPage === 1 ? 1 : 0
     readonly property var dockPanels: [serialDock,componentDock,receiveDock]
     readonly property var plotSeries: typeof numericStream!=="undefined"?numericStream:null
     readonly property var sender: typeof sendSession!=="undefined"?sendSession:null
@@ -35,35 +43,39 @@ ApplicationWindow {
         activePanel: receiveDock.dragging?receiveDock:componentDock.dragging?componentDock:serialDock.dragging?serialDock:null
     }
 
+    WindowResizeHandles {
+        ownerWindow: root
+        namePrefix: "main"
+        visible: root.visibility === Window.Windowed
+    }
+
     ColumnLayout {
         anchors.fill: parent; spacing: 0
-        Rectangle {
-            Layout.fillWidth: true; Layout.preferredHeight: 76; color: Theme.surface
-            RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 26; anchors.rightMargin: 26; spacing: 13
-                Rectangle {
-                    width: 38; height: 38; radius: 11; color: Theme.accentSoft
-                    Text { anchors.centerIn: parent; text: "≋"; color: Theme.accent; font.pixelSize: 28; font.bold: true }
-                }
-                ColumnLayout {
-                    spacing: 1
-                    Text { text: "UART Tool"; color: Theme.heading; font.pixelSize: 23; font.bold: true }
-                    Text { text: "让设备的每一个字节，都清晰可见。"; color: Theme.muted; font.pixelSize: 11 }
-                }
-                Item { Layout.fillWidth: true }
-                RecordingControls { recorder: root.recorder }
-                AppButton {
+        MainTitleBar {
+            Layout.fillWidth: true
+            ownerWindow: root
+            actions: [
+                RecordingControls { recorder: root.recorder },
+                TitleActionButton {
                     objectName: "settingsButton"
+                    icon.source: "icons/settings.svg"
                     text: root.settingsOpen ? "返回接收" : "设置"
-                    onClicked: root.settingsOpen=!root.settingsOpen
-                }
+                    onClicked: root.settingsOpen = !root.settingsOpen
+                },
                 Rectangle {
-                    width: statusLabel.implicitWidth+29; height: 29; radius: 15
+                    implicitWidth: statusLabel.implicitWidth + 24
+                    implicitHeight: 28
+                    radius: 14
                     color: serialConnection.connected ? Theme.successSurface : Theme.disabledSurface
-                    Text { id: statusLabel; anchors.centerIn: parent; text: serialConnection.connected ? "●  串口已连接" : "●  尚未连接"; color: serialConnection.connected ? Theme.success : Theme.muted; font.pixelSize: 11 }
+                    Text {
+                        id: statusLabel
+                        anchors.centerIn: parent
+                        text: serialConnection.connected ? "●  串口已连接" : "●  尚未连接"
+                        color: serialConnection.connected ? Theme.success : Theme.muted
+                        font.pixelSize: 11
+                    }
                 }
-            }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.divider }
+            ]
         }
         Item {
             id: dockWorkspace; objectName: "dockWorkspace"
@@ -71,6 +83,7 @@ ApplicationWindow {
             Layout.fillWidth: true; Layout.fillHeight: true; Layout.margins: 20
             DockLayout {
                 id: dockLayout; anchors.fill: parent
+                initialLayout: root.savedDockLayout
                 firstPanel: serialDock; secondPanel: componentDock; thirdPanel: receiveDock
             }
             DockPanel {
@@ -112,6 +125,7 @@ ApplicationWindow {
                 ComponentWorkspace {
                     id: componentArea; anchors.fill: parent; anchors.margins: 10
                     series: root.plotSeries; protocol: protocolSession; sender: root.sender; dragHighlight: componentMenu.dragOver
+                    layouts: appSettings.componentLayouts
                 }
             }
             DockPanel {
@@ -143,6 +157,11 @@ ApplicationWindow {
             visible: root.settingsOpen
             Layout.fillWidth: true; Layout.fillHeight: true; Layout.margins: 20
             preferences: appSettings
+            onResetLayoutRequested: {
+                dockLayout.restoreLayout({})
+                root.leftPage = 0
+                appSettings.saveDockLayout({})
+            }
         }
         Rectangle {
             Layout.fillWidth: true

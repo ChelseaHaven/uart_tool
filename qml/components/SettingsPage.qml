@@ -5,6 +5,7 @@ import QtQuick.Layouts
 Rectangle {
     id: page
     required property QtObject preferences
+    signal resetLayoutRequested()
     radius: 11; color: Theme.surface; border.color: Theme.border
     ScrollView {
         id: scroll
@@ -31,6 +32,24 @@ Rectangle {
                     currentIndex: page.preferences.darkMode?1:0
                     onActivated: page.preferences.darkMode=currentIndex===1
                     Accessible.name: "界面模式"
+                }
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: Theme.divider; Layout.topMargin: 8; Layout.bottomMargin: 6 }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 24
+                Text {
+                    Layout.fillWidth: true
+                    text: "主窗口布局"
+                    font.pixelSize: 16
+                    font.bold: true
+                    color: Theme.accentText
+                }
+                AppButton {
+                    objectName: "resetDockLayoutButton"
+                    text: "恢复默认布局"
+                    Layout.preferredWidth: 128
+                    onClicked: page.resetLayoutRequested()
                 }
             }
         }

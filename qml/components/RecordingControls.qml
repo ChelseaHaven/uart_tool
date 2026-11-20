@@ -53,8 +53,10 @@ RowLayout {
         }
     }
 
-    AppButton {
+    TitleActionButton {
         id: recordButton
+        icon.source: recording ? "../icons/stop-recording.svg" : "../icons/record.svg"
+        alertActive: recording
         objectName: "recordingButton"
         readonly property bool recording: controls.recorder!==null && controls.recorder.recording
         text: recording ? "停止录制" : "开始录制"

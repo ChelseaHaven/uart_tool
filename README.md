@@ -21,7 +21,7 @@ cd /home/kwille/my_work/qt_project/uart_tool
 
 项目预设沿用本机 Qt 6.12.0、CMake、Ninja 路径。迁移机器时调整 CMakePresets.json、.vscode 配置和 run.sh。Windows 上可直接使用 Qt Creator 打开 CMakeLists.txt，选择有 SerialPort 的桌面 Qt Kit，并使用单独的构建目录。
 
-Linux 的 Wayland 桌面若提供 X11 兼容显示，本工具默认优先使用 xcb 后端，避免 Wayland 输入法焦点切换警告；不修改系统桌面或输入法。显式设置 `QT_QPA_PLATFORM=wayland` 可使用原生 Wayland，设置 `offscreen` 可无窗口检查；Windows 不受此设置影响。
+在同时提供 X11 兼容显示的 Linux Wayland 会话中，默认先尝试 `xcb`，不可用时回退到 Wayland。也可以显式设置 `QT_QPA_PLATFORM=wayland` 使用原生 Wayland，或设置 `offscreen` 做无窗口检查。
 
 ## 操作
 
@@ -95,6 +95,8 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software ./build/appuart_tool --smoke
 主页面默认从左至右为 **连接／组件菜单、组件工作区、数据接收** 三列；连接侧栏宽度固定，中间工作区约占其余宽度的 56%，接收区约占 44%。三个面板均可拖出浮动或吸附。接收区的暂停显示和清空位于页签右侧。左侧仍切换 **连接／组件**，把 **时序图** 拖入组件工作区，在松手处按组件左上角生成（滚动画布及浮动工作区同样支持），再点击图内 **选择参数** 勾选曲线。每张图最多 8 条曲线，点击 × 删除。
 
 组件工作区是自由画布：拖动图表标题移动，拖动四边或四角拉伸，双击标题或点击 □ 最大化／还原；超出工作区的部分可通过滚动条查看。面板之间的分隔条可拖动调整大小。
+
+组件工作区提供「导入布局」和「导出布局」，可用 JSON 文件分享组件类型、位置、大小和快捷发送配置。正常关闭时保存当前布局，下次启动自动恢复。首次启动且没有保存记录时画布为空。图表字段重新选择，快捷发送保留发送草稿、字典参数、步长和发送设置，恢复时不会自动发送。
 
 图表的交互方式：
 

@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QImage>
 #include <QDebug>
+
 int main(int argc, char *argv[]) {
 #ifdef Q_OS_LINUX
     // Prefer XWayland when it is available, avoiding Wayland text-input focus

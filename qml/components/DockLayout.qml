@@ -7,8 +7,47 @@ Item {
     required property Item firstPanel
     required property Item secondPanel
     required property Item thirdPanel
+    property var initialLayout: ({})
     property var groupPanels: [secondPanel,thirdPanel]
     property bool initialized: false
+    property real groupRatio: 0.56
+    property real resizeStartExtent: 0
+    readonly property int dividerSize: 12
+    readonly property bool groupHorizontal: group.orientation === Qt.Horizontal
+    readonly property real groupSplitExtent: (groupHorizontal ? group.availableWidth : group.availableHeight) - dividerSize
+
+    onGroupSplitExtentChanged: applyGroupRatio()
+
+    function updateGroupRatio() {
+        if (!firstPanel.fixedSidebar || !groupPanels.every(panel => panelShown(panel)))
+            return
+
+        const leading = groupPanels[0]
+        const extent = groupHorizontal ? leading.width : leading.height
+        if (group.resizing) {
+            resizeStartExtent = extent
+            return
+        }
+        if (groupSplitExtent > 0 && extent !== resizeStartExtent)
+            groupRatio = extent / groupSplitExtent
+        applyGroupRatio()
+    }
+
+    function applyGroupRatio() {
+        if (!initialized || !firstPanel.fixedSidebar || group.resizing || groupSplitExtent <= 0
+                || !groupPanels.every(panel => panelShown(panel)))
+            return
+
+        const [leading, trailing] = groupPanels
+        const leadingMin = groupHorizontal ? leading.SplitView.minimumWidth : leading.SplitView.minimumHeight
+        const trailingMin = groupHorizontal ? trailing.SplitView.minimumWidth : trailing.SplitView.minimumHeight
+        // Clamp the visible size without changing the ratio chosen by the user.
+        const extent = Math.max(leadingMin, Math.min(groupSplitExtent - trailingMin, groupSplitExtent * groupRatio))
+        if (groupHorizontal)
+            leading.SplitView.preferredWidth = extent
+        else
+            leading.SplitView.preferredHeight = extent
+    }
     readonly property var shownPanels: [firstPanel,secondPanel,thirdPanel].filter(panel=>panelShown(panel))
     function panelShown(panel) { return !panel.floating }
     onShownPanelsChanged: { if(initialized) Qt.callLater(configureFill) }
@@ -16,10 +55,10 @@ Item {
         const items=groupPanels.filter(panel=>panelShown(panel))
         const sizes=items.map(panel=>horizontal?panel.SplitView.minimumWidth:panel.SplitView.minimumHeight)
         if(!sizes.length) return 0
-        return (group.orientation===Qt.Horizontal)===horizontal?sizes.reduce((total,size)=>total+size,0)+12*(sizes.length-1):Math.max(...sizes)
+        return (group.orientation===Qt.Horizontal)===horizontal?sizes.reduce((total,size)=>total+size,0)+dividerSize*(sizes.length-1):Math.max(...sizes)
     }
     component Divider: Rectangle {
-        implicitWidth: 12; implicitHeight: 12; color: "transparent"
+        implicitWidth: layout.dividerSize; implicitHeight: layout.dividerSize; color: "transparent"
         Rectangle {
             anchors.centerIn: parent; radius: 1
             width: parent.width>parent.height?42:2; height: parent.width>parent.height?2:42
@@ -48,15 +87,44 @@ Item {
         SplitView.fillWidth: true; SplitView.fillHeight: true
         SplitView.minimumWidth: layout.groupMinimum(true); SplitView.minimumHeight: layout.groupMinimum(false)
         handle: Divider {}
+        onResizingChanged: layout.updateGroupRatio()
     }
+    function snapshotLayout() {
+        const floating = {}
+        for (const panel of [firstPanel, secondPanel, thirdPanel]) {
+            if (panel.floating) floating[panel.panelKey] = panel.floatingGeometry()
+        }
+        return {version: 1, sidebarEdge: firstPanel.sidebarEdge,
+                sidebarCollapsed: firstPanel.sidebarCollapsed,
+                vertical: !groupHorizontal, receiveFirst: groupPanels[0] === thirdPanel,
+                ratio: groupRatio, floating: floating}
+    }
+
+    function restoreLayout(saved) {
+        const state = saved.version === 1 ? saved : {}
+        for (const panel of [firstPanel, secondPanel, thirdPanel]) {
+            if (panel.floating) panel.dock()
+            panel.SplitView.minimumHeight = panel.minimumDockHeight
+        }
+
+        firstPanel.sidebarEdge = state.sidebarEdge === "right" ? "right" : "left"
+        firstPanel.sidebarCollapsed = state.sidebarCollapsed === true
+        groupRatio = Number.isFinite(state.ratio) && state.ratio > 0 && state.ratio < 1 ? state.ratio : 0.56
+        const pair = state.receiveFirst ? [thirdPanel, secondPanel] : [secondPanel, thirdPanel]
+        install(firstPanel, pair, Qt.Horizontal, state.vertical ? Qt.Vertical : Qt.Horizontal,
+                firstPanel.sidebarEdge === "left")
+
+        for (const panel of [firstPanel, secondPanel, thirdPanel]) {
+            const geometry = state.floating?.[panel.panelKey]
+            if (geometry) panel.restoreFloatingGeometry(geometry)
+        }
+    }
+
     Component.onCompleted: {
-        outer.addItem(firstPanel); outer.addItem(group)
-        group.addItem(secondPanel); group.addItem(thirdPanel)
-        secondPanel.SplitView.preferredWidth=Qt.binding(function() {
-            return Math.max(secondPanel.minimumDockWidth,(layout.width-firstPanel.effectiveSidebarWidth-firstPanel.sidebarDividerWidth-12)*0.56)
-        })
-        initialized=true; configureFill()
+        initialized=true
+        restoreLayout(initialLayout)
     }
+
     function configureFill() {
         const panels=[firstPanel,secondPanel,thirdPanel]
         panels.forEach(panel=>{
@@ -75,6 +143,7 @@ Item {
             const isolated=outer.itemAt(0)===group?outer.itemAt(1):outer.itemAt(0)
             if(isolated) { isolated.SplitView.fillWidth=!isolated.fixedSidebar; isolated.SplitView.fillHeight=true }
         }
+        applyGroupRatio()
     }
     function install(isolated,pair,outerOrientation,innerOrientation,before) {
         while(group.count) group.takeItem(0)
@@ -104,8 +173,8 @@ Item {
                 pair.forEach(item=>{
                     item.SplitView.minimumWidth=item.minimumDockWidth
                     item.SplitView.minimumHeight=Math.min(item.minimumDockHeight,placement.height)
-                    item.SplitView.preferredWidth=placement.width; item.SplitView.preferredHeight=placement.height
                 })
+                groupRatio = 0.5
                 install(firstPanel,pair,Qt.Horizontal,vertical?Qt.Vertical:Qt.Horizontal,firstPanel.sidebarEdge==="left")
             }
             return

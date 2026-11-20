@@ -7,6 +7,21 @@ Item {
     signal submitRequested()
     readonly property bool canAddParameter: parameters.count<32
 
+    function snapshotParameters() {
+        const result=[]
+        for(let i=0;i<parameters.count;++i) {
+            const row=parameters.get(i)
+            result.push({name:row.keyText,value:row.valueText,step:row.stepText})
+        }
+        return result
+    }
+
+    function restoreParameters(rows) {
+        if(rows.length===0) return
+        parameters.clear()
+        for(const row of rows) parameters.append({keyText:row.name,valueText:row.value,stepText:row.step})
+    }
+
     function addParameter() {
         if(!canAddParameter) return
         parameters.append({keyText:"",valueText:"",stepText:"0.1"})
@@ -40,7 +55,7 @@ Item {
         return {text:pairs.join(",")}
     }
 
-    component ParameterValue: TextField {
+    component ParameterValue: AppTextField {
         id: value
         required property string stepText
         property bool wheelArmed: false
@@ -54,6 +69,8 @@ Item {
         ToolTip.visible: hovered && !stepPopup.opened
         ToolTip.text: "点击后滚轮调整 · 右键设步长（当前 "+stepText+"）"
         onActiveFocusChanged: { if(!activeFocus) wheelArmed=false }
+        editingActionText: "设置步长…"
+        onEditingActionRequested: stepPopup.open()
 
         function adjust(clicks) {
             const current=text.trim()
@@ -81,15 +98,11 @@ Item {
         MouseArea {
             anchors.fill: parent
             z: 1
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            preventStealing: true
+            acceptedButtons: Qt.LeftButton
             onPressed: function(event) {
-                if(event.button===Qt.LeftButton) {
-                    value.wheelArmed=true
-                    event.accepted=false
-                }
+                value.wheelArmed=true
+                event.accepted=false
             }
-            onClicked: stepPopup.open()
         }
         Keys.onReturnPressed: function(event) {
             if(event.modifiers & Qt.ControlModifier) editor.submitRequested()
@@ -119,7 +132,7 @@ Item {
             contentItem: RowLayout {
                 spacing: 6
                 Text { text: "步长"; color: Theme.text }
-                TextField {
+                AppTextField {
                     id: stepInput
                     objectName: "parameterStepInput"
                     focus: true
@@ -173,7 +186,7 @@ Item {
                             font.pixelSize: 12
                             color: Theme.muted
                         }
-                        TextField {
+                        AppTextField {
                             objectName: "parameterName_"+row.index
                             Layout.fillWidth: true
                             Layout.preferredWidth: 1

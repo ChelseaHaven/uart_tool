@@ -49,6 +49,7 @@ target_link_libraries(recording_core PUBLIC Qt6::Core)
 
 qt_add_library(uart_application STATIC
     src/application/appsettings.cpp src/application/appsettings.h
+    src/application/componentlayoutstore.cpp src/application/componentlayoutstore.h
     src/presentation/serialconnectionmodel.cpp src/presentation/serialconnectionmodel.h
     src/application/applicationservices.cpp src/application/applicationservices.h)
 target_link_libraries(uart_application PUBLIC serial_transport receive_core protocol_core numeric_data send_core recording_core)
@@ -57,6 +58,7 @@ qt_add_library(uart_ui STATIC src/presentation/logdocumentsettings.cpp src/prese
     src/presentation/dockwindowcontroller.cpp src/presentation/dockwindowcontroller.h
     src/presentation/sendtimer.h
     src/presentation/componentdragcontroller.cpp src/presentation/componentdragcontroller.h
+    src/plotting/interactiveplot.cpp src/plotting/interactiveplot.h
     src/plotting/xyplot.cpp src/plotting/xyplot.h
     src/plotting/timeseriesplot.cpp src/plotting/timeseriesplot.h src/plotting/plotviewport.h)
 target_include_directories(uart_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -65,18 +67,25 @@ target_link_libraries(uart_ui PUBLIC numeric_data Qt6::Quick)
 qt_add_executable(appuart_tool main.cpp)
 set(qml_files
     qml/Main.qml qml/components/Theme.qml qml/components/DockOverlay.qml qml/components/DockGuides.qml qml/components/DockPanel.qml qml/components/DockLayout.qml qml/components/SidebarFoldHandle.qml qml/components/ComponentFrame.qml qml/components/SettingsPage.qml qml/components/RecordingControls.qml
+    qml/components/MainTitleBar.qml qml/components/TitleActionButton.qml qml/components/WindowResizeHandles.qml
+    qml/components/TextEditingMenu.qml qml/components/AppTextField.qml qml/components/AppSpinBox.qml
     qml/components/AppButton.qml qml/components/FieldLabel.qml qml/components/HorizontalToolbar.qml
     qml/components/ConfigCombo.qml qml/components/SerialConfigPanel.qml
     qml/components/ReceivePanel.qml qml/components/RawReceivePanel.qml qml/components/ReceiveTextEdit.qml qml/components/SendPanel.qml qml/components/SendEndingCombo.qml qml/components/QuickSendCard.qml qml/components/ParameterSendEditor.qml
+    qml/components/PlotParametersPopup.qml qml/components/PlotReferenceEditor.qml
     qml/components/ComponentMenu.qml qml/components/PlotPreview.qml qml/components/XYPlotCard.qml qml/components/ComponentWorkspace.qml qml/components/TimePlotCard.qml
     qml/components/ProtocolPanel.qml qml/components/ProtocolSelector.qml qml/components/BinaryCommandSelector.qml qml/components/CascadeMenuButton.qml qml/components/BinaryProtocolEditor.qml qml/components/ChecksumRuleEditor.qml qml/components/FrameStructureEditor.qml qml/components/DataFieldsEditor.qml)
-foreach(file IN LISTS qml_files)
+set(qml_icons
+    qml/icons/settings.svg qml/icons/record.svg qml/icons/stop-recording.svg
+    qml/icons/edit-undo.svg qml/icons/edit-redo.svg qml/icons/edit-cut.svg
+    qml/icons/edit-copy.svg qml/icons/edit-paste.svg qml/icons/edit-delete.svg qml/icons/edit-select-all.svg)
+foreach(file IN LISTS qml_files qml_icons)
     string(REGEX REPLACE "^qml/" "" alias "${file}")
     set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS "${alias}")
 endforeach()
 set_source_files_properties(qml/components/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 qt_add_resources(appuart_tool theme_directory PREFIX "/qt/qml/uart_tool" BASE "${CMAKE_CURRENT_SOURCE_DIR}/qml" FILES qml/components/qmldir)
-qt_add_qml_module(appuart_tool URI uart_tool VERSION 1.0 QML_FILES ${qml_files})
+qt_add_qml_module(appuart_tool URI uart_tool VERSION 1.0 QML_FILES ${qml_files} RESOURCES ${qml_icons})
 set_target_properties(appuart_tool PROPERTIES
     MACOSX_BUNDLE TRUE WIN32_EXECUTABLE TRUE
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}

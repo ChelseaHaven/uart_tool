@@ -20,7 +20,7 @@ Dialog {
     property string savedSignature: ""
     property bool newDraft: false
     readonly property bool hasEditingTarget: newDraft || presetPicker.currentIndex>=0
-    component Input: TextField {
+    component Input: AppTextField {
         implicitHeight: 36; color: Theme.text; selectByMouse: true
         background: Rectangle { radius: 5; color: Theme.surface; border.color: Theme.border }
     }

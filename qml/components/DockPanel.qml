@@ -53,6 +53,29 @@ Item {
         floating=true
         if(!forDrag) { floatWindow.raise(); floatWindow.requestActivate() }
     }
+    function floatingGeometry() {
+        return {x: floatWindow.x, y: floatWindow.y, width: floatWindow.width, height: floatWindow.height}
+    }
+    function restoreFloatingGeometry(geometry) {
+        if (![geometry.x, geometry.y, geometry.width, geometry.height].every(Number.isFinite)) return
+
+        const screens = Array.from(Qt.application.screens)
+        const screen = screens.find(candidate => geometry.x >= candidate.virtualX
+                                   && geometry.x < candidate.virtualX + candidate.width
+                                   && geometry.y >= candidate.virtualY
+                                   && geometry.y < candidate.virtualY + candidate.height) || ownerWindow.screen
+        if (!screen) return
+
+        if (fixedSidebar) {
+            sidebarCollapsed=false
+            fixedFloatHeight=Math.max(minimumFloatHeight,Math.min(geometry.height,screen.height))
+        }
+        floatWindow.width=fixedSidebar ? sidebarWidth : Math.max(minimumFloatWidth,Math.min(geometry.width,screen.width))
+        floatWindow.height=fixedSidebar ? fixedFloatHeight : Math.max(minimumFloatHeight,Math.min(geometry.height,screen.height))
+        floatWindow.x=Math.max(screen.virtualX,Math.min(geometry.x,screen.virtualX+screen.width-floatWindow.width))
+        floatWindow.y=Math.max(screen.virtualY,Math.min(geometry.y,screen.virtualY+screen.height-floatWindow.height))
+        floating=true
+    }
     function dock(direction,targetPanel,placement) {
         if(fixedSidebar) {
             if(direction && direction!=="left" && direction!=="right") return
@@ -192,22 +215,11 @@ Item {
         maximumHeight: panel.fixedSidebar?panel.fixedFloatHeight:16777215
         transientParent: panel.ownerWindow
         color: Theme.surface; font: panel.ownerWindow.font; palette: panel.ownerWindow.palette
-        Repeater {
-            model: ["l","r","t","b","lt","rt","lb","rb"]
-            MouseArea {
-                required property string modelData
-                objectName: panel.panelKey+"WindowResize_"+modelData
-                parent: floatWindow.contentItem; z: 40
-                visible: !panel.fixedSidebar && floatWindow.visibility!==Window.Maximized
-                readonly property bool corner: modelData.length===2
-                readonly property int edges: (modelData.includes("l")?Qt.LeftEdge:0) | (modelData.includes("r")?Qt.RightEdge:0) | (modelData.includes("t")?Qt.TopEdge:0) | (modelData.includes("b")?Qt.BottomEdge:0)
-                x: modelData.includes("l")?0:modelData.includes("r")?parent.width-5:5
-                y: modelData.includes("t")?0:modelData.includes("b")?parent.height-5:5
-                width: corner || modelData==="l" || modelData==="r"?5:parent.width-10
-                height: corner || modelData==="t" || modelData==="b"?5:parent.height-10
-                cursorShape: corner?(modelData==="lt" || modelData==="rb"?Qt.SizeFDiagCursor:Qt.SizeBDiagCursor):(modelData==="l" || modelData==="r"?Qt.SizeHorCursor:Qt.SizeVerCursor)
-                onPressed: floatWindow.startSystemResize(edges)
-            }
+        WindowResizeHandles {
+            parent: floatWindow.contentItem
+            ownerWindow: floatWindow
+            namePrefix: panel.panelKey
+            visible: !panel.fixedSidebar && floatWindow.visibility !== Window.Maximized
         }
         onClosing: function(close) {
             if(!panel.shuttingDown) { close.accepted=false; panel.dock() }

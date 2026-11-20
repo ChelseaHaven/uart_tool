@@ -2,6 +2,8 @@
 #include "presentation/logdocumentsettings.h"
 #include "presentation/dockwindowcontroller.h"
 #include "core/byteformatter.h"
+#include "plotting/timeseriesplot.h"
+#include "plotting/xyplot.h"
 #include <QtTest>
 #include <QSignalSpy>
 #include <QFile>
@@ -24,6 +26,7 @@
 #include <QDir>
 #include <QSettings>
 #include <QImage>
+#include <QPainter>
 #include <QScreen>
 #include <QWheelEvent>
 #include <cmath>
@@ -330,6 +333,39 @@ private slots:
         QVERIFY(button && input && mode && ending);
         QCOMPARE(mode->property("currentText").toString(),QStringLiteral("文本"));
         QCOMPARE(ending->property("currentValue").toString(),QStringLiteral("lf"));
+        window->requestActivate();
+        QTRY_VERIFY(window->isActive());
+        auto *moveHandle=visualItem(card,"componentMoveHandle"); QVERIFY(moveHandle);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,moveHandle->mapToScene(QPointF(15,15)).toPoint());
+        QTest::keyClick(window,Qt::Key_C,Qt::ControlModifier);
+        const auto inputPoint=input->mapToScene(QPointF(25,20)).toPoint();
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,inputPoint);
+        QTRY_VERIFY(input->hasActiveFocus());
+        QTRY_COMPARE(window->cursor().shape(),Qt::IBeamCursor);
+        input->setProperty("text","payload");
+        QTest::keyClick(window,Qt::Key_A,Qt::ControlModifier);
+        QTest::keyClick(window,Qt::Key_C,Qt::ControlModifier);
+        QCOMPARE(QGuiApplication::clipboard()->text(),QString("payload"));
+        input->setProperty("text","");
+        QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
+        QCOMPARE(input->property("text").toString(),QString("payload"));
+        QCOMPARE(workspace->property("widgetCount").toInt(),1);
+
+        input->setProperty("text","");
+        QTest::mouseClick(window,Qt::RightButton,Qt::NoModifier,inputPoint);
+        auto *textMenu=input->findChild<QObject *>("textEditingMenu"); QVERIFY(textMenu);
+        QTRY_VERIFY(textMenu->property("opened").toBool());
+        auto *textMenuContent=textMenu->property("contentItem").value<QQuickItem *>(); QVERIFY(textMenuContent);
+        auto *pasteText=visualItem(textMenuContent,"pasteInputText"); QVERIFY(pasteText && pasteText->isEnabled());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,
+                          pasteText->mapToScene(QPointF(pasteText->width()/2,pasteText->height()/2)).toPoint());
+        QCOMPARE(input->property("text").toString(),QString("payload"));
+        QCOMPARE(workspace->property("widgetCount").toInt(),1);
+        QTRY_VERIFY(!textMenu->property("visible").toBool());
+        QTest::mouseClick(window,Qt::RightButton,Qt::NoModifier,inputPoint);
+        QTRY_VERIFY(textMenu->property("opened").toBool());
+        QTest::keyClick(window,Qt::Key_Escape);
+        QTRY_VERIFY(!textMenu->property("visible").toBool());
         QVERIFY(!button->isEnabled()); QVERIFY(services.serialConnection().openPort(p.path));
         input->setProperty("text",QStringLiteral("你好")); ending->setProperty("currentIndex",2); QTRY_VERIFY(button->isEnabled());
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,button->mapToScene(QPointF(button->width()/2,button->height()/2)).toPoint());
@@ -385,14 +421,22 @@ private slots:
         window->requestActivate();
         QTRY_VERIFY_WITH_TIMEOUT(window->isActive(),1500);
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,rename->mapToScene(QPointF(20,12)).toPoint());
-        auto *name=card->findChild<QQuickItem *>("quickSendName"); QVERIFY(name);
-        QTRY_VERIFY_WITH_TIMEOUT(name->isVisible(),1500);
-        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,name->mapToScene(QPointF(20,12)).toPoint());
-        QTRY_VERIFY_WITH_TIMEOUT(name->hasActiveFocus(),1500);
+        QQuickItem *name=nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((name=visualItem(card,"quickSendName")) && name->hasActiveFocus(),1500);
+        QVERIFY(std::abs(name->mapToScene(QPointF()).y()-rename->mapToScene(QPointF()).y())<=1);
+        QVERIFY(name->mapToScene(QPointF(name->width(),0)).x()<rename->mapToScene(QPointF()).x());
         name->setProperty("text",QStringLiteral("轮速 PID"));
         QTest::keyClick(window,Qt::Key_Return);
         QCOMPARE(card->property("title").toString(),QStringLiteral("轮速 PID"));
-        QTRY_VERIFY_WITH_TIMEOUT(!name->isVisible(),1500);
+        QTRY_VERIFY_WITH_TIMEOUT(!visualItem(card,"quickSendName"),1500);
+
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,rename->mapToScene(QPointF(20,12)).toPoint());
+        QTRY_VERIFY_WITH_TIMEOUT((name=visualItem(card,"quickSendName")) && name->hasActiveFocus(),1500);
+        QCOMPARE(name->property("selectedText").toString(),QStringLiteral("轮速 PID"));
+        name->setProperty("text","ignored");
+        QTest::keyClick(window,Qt::Key_Escape);
+        QTRY_VERIFY_WITH_TIMEOUT(!visualItem(card,"quickSendName"),1500);
+        QCOMPARE(card->property("title").toString(),QStringLiteral("轮速 PID"));
 
         auto *add=visualItem(card,"addSendParameter"); QVERIFY(add);
         QVERIFY(QMetaObject::invokeMethod(add,"clicked"));
@@ -413,6 +457,15 @@ private slots:
         QTest::qWait(60);
         const QPointF fieldCenter(kp->width()/2,kp->height()/2);
         QTest::mouseClick(window,Qt::RightButton,Qt::NoModifier,kp->mapToScene(fieldCenter).toPoint());
+        auto *valueMenu=kp->findChild<QObject *>("textEditingMenu"); QVERIFY(valueMenu);
+        QTRY_VERIFY(valueMenu->property("opened").toBool());
+        auto *valueMenuContent=valueMenu->property("contentItem").value<QQuickItem *>(); QVERIFY(valueMenuContent);
+        auto *stepAction=visualItem(valueMenuContent,"extraInputAction"); QVERIFY(stepAction && stepAction->isVisible());
+        QSignalSpy stepTriggered(stepAction,SIGNAL(triggered()));
+        QTest::qWait(60);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,
+                          stepAction->mapToScene(QPointF(stepAction->width()/2,stepAction->height()/2)).toPoint());
+        QTRY_COMPARE_WITH_TIMEOUT(stepTriggered.count(),1,1500);
         auto *step=kp->findChild<QQuickItem *>("parameterStepInput"); QVERIFY(step);
         QTRY_VERIFY_WITH_TIMEOUT(step->isVisible(),1500);
         QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,step->mapToScene(QPointF(20,12)).toPoint());
@@ -524,6 +577,112 @@ private slots:
         window->close();
 #endif
     }
+    void componentLayoutRoundTrip() {
+        QTemporaryDir temporary; QVERIFY(temporary.isValid());
+        const auto file=QUrl::fromLocalFile(temporary.filePath("shared.json"));
+        const auto invalid=QUrl::fromLocalFile(temporary.filePath("invalid.json"));
+        {
+            QFile broken(invalid.toLocalFile()); QVERIFY(broken.open(QIODevice::WriteOnly));
+            QVERIFY(broken.write("{\"format\":\"uart-tool.component-layout\",\"version\":2,\"components\":[]}")>0);
+        }
+        const QVariantMap send{{"mode",2},{"text","AA 01 FF\n"},{"ending","crlf"},{"repeat",true},{"intervalMs","250"},
+            {"parameters",QVariantList{
+                QVariantMap{{"name","kp"},{"value","1.25"},{"step","0.05"}},
+                QVariantMap{{"name","ki"},{"value","-2e-2"},{"step","0.1"}}}}};
+        const QVariantMap layout{{"format","uart-tool.component-layout"},{"version",1},
+            {"activeIndex",2},{"maximizedIndex",2},{"scrollX",0},{"scrollY",0},
+            {"stackOrder",QVariantList{1,0,2}},
+            {"components",QVariantList{
+                QVariantMap{{"type","time-plot"},{"x",15},{"y",28},{"width",400},{"height",230},
+                            {"referenceEnabled",false},{"referenceValue",2.5}},
+                QVariantMap{{"type","xy-plot"},{"x",85},{"y",99},{"width",330},{"height",220}},
+                QVariantMap{{"type","quick-send"},{"x",175},{"y",188},{"width",410},{"height",280},
+                            {"name",QStringLiteral("轮速参数")},{"send",send}}}}};
+        auto configure=[](QQmlApplicationEngine &engine,ApplicationServices &services) {
+            engine.rootContext()->setContextProperty("appSettings",&services.settings());
+            engine.rootContext()->setContextProperty("serialConnection",&services.serialConnection());
+            engine.rootContext()->setContextProperty("receiveSession",&services.receiveSession());
+            engine.rootContext()->setContextProperty("protocolSession",&services.protocolSession());
+            engine.rootContext()->setContextProperty("numericStream",&services.numericStream());
+            engine.rootContext()->setContextProperty("sendSession",&services.sendSession());
+            engine.load(QUrl::fromLocalFile(QStringLiteral(UART_SOURCE_DIR "/qml/Main.qml")));
+        };
+        auto checkWidgets=[](QQuickWindow *window) {
+            auto *workspace=window->findChild<QQuickItem *>("componentWorkspace"); QVERIFY(workspace);
+            QCOMPARE(workspace->property("widgetCount").toInt(),3);
+            auto *time=visualItem(workspace,"timePlotCard_1"); QVERIFY(time);
+            auto *xy=visualItem(workspace,"xyPlotCard_2"); QVERIFY(xy);
+            auto *quick=visualItem(workspace,"quickSendCard_3"); QVERIFY(quick);
+            for (auto *card : {time,xy,quick}) QVERIFY(!card->property("selected").toBool());
+            QVERIFY(xy->parentItem()->z()<time->parentItem()->z());
+            QVERIFY(time->parentItem()->z()<quick->parentItem()->z());
+            QVERIFY(quick->property("maximized").toBool());
+            QCOMPARE(quick->property("title").toString(),QStringLiteral("轮速参数"));
+            QVERIFY(!time->property("referenceEnabled").toBool());
+            QCOMPARE(time->property("referenceValue").toDouble(),2.5);
+            QCOMPARE(time->property("selectedKeys").toStringList(),QStringList());
+            QVERIFY(xy->property("xKey").toString().isEmpty());
+            QVERIFY(xy->property("yKey").toString().isEmpty());
+            QCOMPARE(visualItem(quick,"sendMode")->property("currentIndex").toInt(),2);
+            QCOMPARE(visualItem(quick,"sendInput")->property("text").toString(),QString("AA 01 FF\n"));
+            QCOMPARE(visualItem(quick,"sendEnding")->property("currentValue").toString(),QString("crlf"));
+            QVERIFY(visualItem(quick,"timedSendToggle")->property("checked").toBool());
+            QCOMPARE(visualItem(quick,"timedSendInterval")->property("text").toString(),QString("250"));
+            QCOMPARE(visualItem(quick,"parameterValue_0")->property("text").toString(),QString("1.25"));
+            QCOMPARE(visualItem(quick,"parameterValue_0")->property("stepText").toString(),QString("0.05"));
+            QCOMPARE(visualItem(quick,"parameterName_1")->property("text").toString(),QString("ki"));
+            QCOMPARE(visualItem(quick,"parameterValue_1")->property("text").toString(),QString("-2e-2"));
+            QCOMPARE(visualItem(quick,"sendButton")->property("text").toString(),QStringLiteral("发送"));
+        };
+
+        {
+            ApplicationServices services;
+            auto *store=services.settings().componentLayouts();
+            QVERIFY(store->lastLayout().isEmpty());
+            QVERIFY(store->exportLayout(layout,file));
+            QQmlApplicationEngine engine;
+            configure(engine,services);
+            QVERIFY(!engine.rootObjects().isEmpty());
+            auto *window=qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window);
+            auto *workspace=window->findChild<QQuickItem *>("componentWorkspace"); QVERIFY(workspace);
+            QCOMPARE(workspace->property("widgetCount").toInt(),0);
+            QVERIFY(QMetaObject::invokeMethod(workspace,"importLayoutFrom",Q_ARG(QVariant,QVariant::fromValue(file))));
+            checkWidgets(window);
+            QVERIFY(QMetaObject::invokeMethod(workspace,"importLayoutFrom",Q_ARG(QVariant,QVariant::fromValue(invalid))));
+            QVERIFY(!store->lastError().isEmpty());
+            checkWidgets(window);
+            auto *time=visualItem(workspace,"timePlotCard_1"); QVERIFY(time);
+            auto *xy=visualItem(workspace,"xyPlotCard_2"); QVERIFY(xy);
+            QVERIFY(time->setProperty("selectedKeys",QStringList{"1:x:-1"}));
+            QVERIFY(xy->setProperty("xKey","1:x:-1"));
+            QVERIFY(xy->setProperty("yKey","1:y:-1"));
+            auto *quick=visualItem(workspace,"quickSendCard_3"); QVERIFY(quick);
+            QVERIFY(QMetaObject::invokeMethod(quick,"activated"));
+            QVERIFY(quick->property("selected").toBool());
+            QVERIFY(QMetaObject::invokeMethod(workspace,"exportLayoutTo",Q_ARG(QVariant,QVariant::fromValue(file))));
+            const auto exported=store->importLayout(file);
+            QVERIFY(!exported.isEmpty());
+            QVERIFY(!exported.contains("activeIndex"));
+            QVERIFY(!exported.value("components").toList().first().toMap().contains("selectedKeys"));
+            QVERIFY(window->close());
+            QCOMPARE(store->lastLayout(),store->importLayout(file));
+        }
+        {
+            ApplicationServices services;
+            QQmlApplicationEngine engine;
+            configure(engine,services);
+            QVERIFY(!engine.rootObjects().isEmpty());
+            auto *window=qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window);
+            checkWidgets(window);
+            auto *workspace=window->findChild<QQuickItem *>("componentWorkspace"); QVERIFY(workspace);
+            auto *quick=visualItem(workspace,"quickSendCard_3"); QVERIFY(quick);
+            QVERIFY(QMetaObject::invokeMethod(quick,"maximizeRequested"));
+            QCOMPARE(quick->width(),410.0);
+            QCOMPARE(quick->height(),280.0);
+            QCOMPARE(quick->parentItem()->position(),QPointF(175,188));
+            QVERIFY(window->close());
+        }
+    }
     void chartComponentUi() {
         ApplicationServices services; auto &protocol=services.protocolSession(); auto &series=services.numericStream();
         QQmlApplicationEngine engine;
@@ -541,7 +700,7 @@ private slots:
         QTRY_VERIFY(workspace->width()>100 && workspace->height()>100); QTest::qWait(60);
         auto *tile=window->findChild<QQuickItem *>("timePlotComponent"); QVERIFY(tile);
         const auto source=tile->mapToScene(QPointF(70,40)).toPoint();
-        const auto target=workspace->mapToScene(QPointF(12,70)).toPoint();
+        const auto target=workspace->mapToScene(QPointF(32,70)).toPoint();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,source);
         QTest::mouseMove(window,source+QPoint(25,10),1);
         QTest::mouseMove(window,target,1);
@@ -550,7 +709,7 @@ private slots:
         QTRY_COMPARE(workspace->property("widgetCount").toInt(),1);
         QQuickItem *card=nullptr; QTRY_VERIFY((card=visualItem(window->contentItem(),"timePlotCard_1")));
         const auto placed=card->mapToScene(QPointF());
-        QVERIFY(std::abs(placed.x()-target.x())<=1 && std::abs(placed.y()-target.y())<=1);
+        QVERIFY(std::abs(placed.x()-target.x()+16)<=1 && std::abs(placed.y()-target.y()+16)<=1);
         // A workspace component has reusable move/resize/maximize chrome.
         auto *geometry=card->parentItem(); QVERIFY(geometry);
         auto *moveHandle=visualItem(card,"componentMoveHandle"); QVERIFY(moveHandle);
@@ -570,11 +729,47 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(card,"maximizeRequested")); QTRY_VERIFY(card->property("maximized").toBool());
         QVERIFY(QMetaObject::invokeMethod(card,"maximizeRequested")); QTRY_VERIFY(!card->property("maximized").toBool());
         QCOMPARE(geometry->size(),restoredSize);
-        auto *choose=visualItem(window->contentItem(),"plotParameters_1"); QVERIFY(choose); QVERIFY(!choose->isEnabled());
-        QVERIFY(protocol.selectProtocol("keyvalue")); protocol.feedBytes("awa:2.0, aaa:3\n"); QTRY_COMPARE(series.channels().size(),2); QTRY_VERIFY(choose->isEnabled());
+        auto *plot=visualItem(window->contentItem(),"timePlot_1"); QVERIFY(plot);
+        auto *choose=visualItem(window->contentItem(),"plotParameters_1"); QVERIFY(choose && choose->isEnabled());
+        const auto focusPoint=plot->mapToScene(QPointF(plot->width()/2,plot->height()/2)).toPoint();
+        QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,focusPoint);
+        QTRY_VERIFY_WITH_TIMEOUT(plot->property("focusActive").toBool(),1800);
+        QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,focusPoint);
+        QVERIFY(!plot->property("focusActive").toBool());
+        QVERIFY(plot->property("referenceEnabled").toBool());
+        QCOMPARE(plot->property("referenceValue").toDouble(),0.0);
+        const auto withReference=grabItem(plot); QVERIFY(!withReference.isNull());
         QVERIFY(QMetaObject::invokeMethod(choose,"clicked"));
-        auto *popup=card->findChild<QObject *>("plotParametersPopup_1"); QVERIFY(popup); QTRY_VERIFY(popup->property("visible").toBool());
+        auto *popup=card->findChild<QObject *>("plotParametersPopup_1"); QVERIFY(popup);
+        QTRY_VERIFY(popup->property("opened").toBool());
         auto *popupContent=popup->property("contentItem").value<QQuickItem *>(); QVERIFY(popupContent);
+        auto *referenceToggle=visualItem(popupContent,"plotReferenceToggle_1"); QVERIFY(referenceToggle);
+        auto *referenceInput=visualItem(popupContent,"plotReferenceValue_1"); QVERIFY(referenceInput);
+        const auto clickControl=[](QQuickItem *item) {
+            const auto center=item->mapToScene(QPointF(item->width()/2,item->height()/2)).toPoint();
+            QTest::mouseClick(item->window(),Qt::LeftButton,Qt::NoModifier,center);
+        };
+        clickControl(referenceToggle);
+        QTRY_VERIFY(!plot->property("referenceEnabled").toBool());
+        QVERIFY(!referenceInput->isEnabled());
+        const auto withoutReference=grabItem(plot); QVERIFY(!withoutReference.isNull());
+        QVERIFY(withReference!=withoutReference);
+        clickControl(referenceToggle);
+        QTRY_VERIFY(referenceInput->isEnabled());
+        window->requestActivate();
+        QTRY_VERIFY(window->isActive());
+        clickControl(referenceInput);
+        QTRY_VERIFY_WITH_TIMEOUT(referenceInput->hasActiveFocus(),1500);
+        QVERIFY(referenceInput->setProperty("text","-2.5"));
+        QTest::keyClick(referenceInput->window(),Qt::Key_Return);
+        QTRY_COMPARE(plot->property("referenceValue").toDouble(),-2.5);
+        QVERIFY(plot->property("referenceEnabled").toBool());
+        QVERIFY(QMetaObject::invokeMethod(popup,"close"));
+        QTRY_VERIFY(!popup->property("visible").toBool());
+
+        QVERIFY(protocol.selectProtocol("keyvalue"));
+        protocol.feedBytes("awa:2.0, aaa:3\n"); QTRY_COMPARE(series.channels().size(),2);
+        QVERIFY(QMetaObject::invokeMethod(choose,"clicked"));
         QTRY_VERIFY(popup->property("opened").toBool());
         QTest::qWait(100); // Allow the popup/viewport visual parenting to settle.
         for(int i=0;i<2;++i) {
@@ -587,7 +782,7 @@ private slots:
             const auto line=QString("awa:%1, aaa:%2\n").arg(std::sin(i*0.13)*5).arg(std::cos(i*0.12)*2).toUtf8();
             protocol.feedBytes(line); QTest::qWait(30);
         }
-        auto *plot=visualItem(window->contentItem(),"timePlot_1"); QVERIFY(plot); QCOMPARE(plot->property("channels").toStringList().size(),2);
+        QCOMPARE(plot->property("channels").toStringList().size(),2);
         const auto selected=plot->property("channels").toStringList();
         const auto beforeSparse=series.points(selected.at(0),-1,series.latestTime()).size();
         protocol.feedBytes("current:0.8\n");
@@ -611,13 +806,35 @@ private slots:
         wheelAt({10,plot->height()/2});
         QCOMPARE(plot->property("timeSpan").toDouble(),10.); QVERIFY(plot->property("following").toBool()); QVERIFY(!plot->property("autoRange").toBool());
         QVERIFY(QMetaObject::invokeMethod(plot,"resetView"));
-        const auto panStart=plot->mapToScene(QPointF(plot->width()/2,plot->height()/2)).toPoint();
-        QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,panStart);
-        QTest::mouseMove(window,panStart+QPoint(30,10),1); QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,panStart+QPoint(30,10));
-        QVERIFY(!plot->property("following").toBool()); QVERIFY(QMetaObject::invokeMethod(plot,"resetView"));
+        const auto dragPlot=[&](QPointF start,Qt::MouseButton button=Qt::LeftButton) {
+            const auto scene=plot->mapToScene(start).toPoint();
+            const auto end=scene+QPoint(30,20);
+            QTest::mousePress(window,button,Qt::NoModifier,scene);
+            QTest::mouseMove(window,end,1);
+            QTest::mouseRelease(window,button,Qt::NoModifier,end);
+        };
+        const auto span=plot->property("timeSpan").toDouble();
+        dragPlot({plot->width()/2,plot->height()/2});
+        QCOMPARE(plot->property("timeSpan").toDouble(),span);
+        QVERIFY(!plot->property("following").toBool());
+        QVERIFY(!plot->property("autoRange").toBool());
+        QVERIFY(!plot->property("focusActive").toBool());
+        QVERIFY(QMetaObject::invokeMethod(plot,"resetView"));
+        dragPlot({plot->width()/2,plot->height()-12});
+        QVERIFY(!plot->property("following").toBool());
+        QVERIFY(plot->property("autoRange").toBool());
+        QVERIFY(QMetaObject::invokeMethod(plot,"resetView"));
+        dragPlot({25,plot->height()/2});
+        QVERIFY(plot->property("following").toBool());
+        QVERIFY(!plot->property("autoRange").toBool());
+        QVERIFY(QMetaObject::invokeMethod(plot,"resetView"));
+        dragPlot({plot->width()/2,plot->height()/2},Qt::MiddleButton);
+        QVERIFY(plot->property("following").toBool());
+        QVERIFY(plot->property("autoRange").toBool());
         const auto snapshot=qEnvironmentVariable("UART_CHART_SNAPSHOT"); if(!snapshot.isEmpty()) { QTest::qWait(70); QVERIFY(window->grabWindow().save(snapshot)); }
         auto *componentDock=window->findChild<QQuickItem *>("componentsDock"); QVERIFY(componentDock); QVERIFY(QMetaObject::invokeMethod(componentDock,"undock"));
         auto *floating=window->findChild<QQuickWindow *>("componentsFloatingWindow"); QVERIFY(floating); QTRY_COMPARE(workspace->window(),floating);
+        QVERIFY(QTest::qWaitForWindowExposed(floating));
         auto *receiver=window->findChild<QQuickItem *>("receiveWorkspace"); QVERIFY(receiver); QCOMPARE(receiver->window(),window);
         const auto targetGlobal=workspace->mapToGlobal(QPointF(workspace->width()/2,workspace->height()/2)).toPoint();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,tile->mapToScene(QPointF(70,40)).toPoint());
@@ -626,7 +843,7 @@ private slots:
         QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,window->mapFromGlobal(targetGlobal)); QTRY_COMPARE(workspace->property("widgetCount").toInt(),2);
         QQuickItem *secondCard=nullptr; QTRY_VERIFY((secondCard=visualItem(floating->contentItem(),"timePlotCard_2")));
         const auto secondPosition=secondCard->mapToGlobal(QPointF());
-        QVERIFY(std::abs(secondPosition.x()-targetGlobal.x())<=1 && std::abs(secondPosition.y()-targetGlobal.y())<=1);
+        QVERIFY(std::abs(secondPosition.x()-targetGlobal.x()+16)<=1 && std::abs(secondPosition.y()-targetGlobal.y()+16)<=1);
         auto *componentTracker=componentDock->findChild<DockWindowController *>("componentsDockController"); QVERIFY(componentTracker);
         auto *dockArea=window->findChild<QQuickItem *>("dockWorkspace"); QVERIFY(dockArea);
         const auto dockTarget=QPointF(contentDockRect(window).center().x(),contentDockRect(window).bottom()-10);
@@ -634,8 +851,53 @@ private slots:
         componentTracker->endDrag(dockTarget); QTRY_COMPARE(workspace->window(),window);
         QTRY_VERIFY(!componentDock->property("floating").toBool());
         QCOMPARE(workspace->property("widgetCount").toInt(),2); QCOMPARE(series.channels().size(),3);
-        QVERIFY(protocol.selectProtocol("none")); QVERIFY(series.channels().isEmpty()); QTRY_VERIFY(plot->property("channels").toStringList().isEmpty()); QVERIFY(!choose->isEnabled());
+        QVERIFY(protocol.selectProtocol("none")); QVERIFY(series.channels().isEmpty()); QTRY_VERIFY(plot->property("channels").toStringList().isEmpty()); QVERIFY(choose->isEnabled());
         window->close();
+    }
+    void adaptivePlotGrid() {
+        TimeSeriesPlot time;
+        XYPlot xy;
+        time.setReferenceEnabled(false);
+        xy.setXReferenceEnabled(false);
+        xy.setYReferenceEnabled(false);
+        const auto gridLines=[](QQuickPaintedItem &plot,QSize size) {
+            plot.setWidth(size.width());
+            plot.setHeight(size.height());
+            QImage image(size,QImage::Format_ARGB32_Premultiplied);
+            image.fill(Qt::transparent);
+            QPainter painter(&image);
+            plot.paint(&painter);
+            painter.end();
+
+            const auto count=[&](int length,auto pixelAt) {
+                int lines=0;
+                bool previous=false;
+                for (int i=0;i<length;++i) {
+                    const auto color=pixelAt(i);
+                    const bool green=color.alpha()>0 && color.green()>color.red();
+                    if (green && !previous) ++lines;
+                    previous=green;
+                }
+                return lines;
+            };
+            return QSize(count(size.width(),[&](int x) { return image.pixelColor(x,20); }),
+                         count(size.height(),[&](int y) { return image.pixelColor(80,y); }));
+        };
+        for (auto *plot : {static_cast<QQuickPaintedItem *>(&time),static_cast<QQuickPaintedItem *>(&xy)}) {
+            QVERIFY(plot->setProperty("gridColor",QColor(Qt::green)));
+            QVERIFY(plot->setProperty("textColor",QColor(Qt::black)));
+            const auto small=gridLines(*plot,{230,130});
+            const auto large=gridLines(*plot,{720,420});
+            QVERIFY(small.width()>=2 && small.height()>=2);
+            QVERIFY(large.width()>small.width() && large.height()>small.height());
+        }
+        QCOMPARE(gridLines(time,{300,140}).height(),5);
+        QCOMPARE(gridLines(xy,{300,140}).height(),5);
+        for (int i=0;i<3;++i) {
+            const QSize size(390,304+28*i);
+            QCOMPARE(gridLines(time,size).height(),6+i);
+            QCOMPARE(gridLines(xy,size).height(),6+i);
+        }
     }
     void xyPlotUi() {
         ApplicationServices services;
@@ -656,7 +918,7 @@ private slots:
         auto *workspace=window->findChild<QQuickItem *>("componentWorkspace"); QVERIFY(workspace);
         QTRY_VERIFY(tile && tile->isVisible() && tile->width()>100 && workspace->width()>100);
         const auto source=tile->mapToScene(QPointF(70,40)).toPoint();
-        const auto target=workspace->mapToScene(QPointF(12,70)).toPoint();
+        const auto target=workspace->mapToScene(QPointF(12,100)).toPoint();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,source);
         QTest::mouseMove(window,source+QPoint(25,10),1);
         QTest::mouseMove(window,target,1);
@@ -664,32 +926,85 @@ private slots:
         QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,target);
 
         QQuickItem *plot=nullptr; QTRY_VERIFY((plot=visualItem(window->contentItem(),"xyPlot_1")));
-        auto *x=visualItem(window->contentItem(),"xyXChannel_1"); QVERIFY(x);
-        auto *y=visualItem(window->contentItem(),"xyYChannel_1"); QVERIFY(y);
-        QVERIFY(!x->isEnabled() && !y->isEnabled());
+        auto *parameters=visualItem(window->contentItem(),"xyParameters_1"); QVERIFY(parameters);
+        auto *card=visualItem(window->contentItem(),"xyPlotCard_1"); QVERIFY(card);
+        QCOMPARE(card->width(),card->height());
+        QVERIFY(parameters->isEnabled());
+        QVERIFY(plot->property("xReferenceEnabled").toBool());
+        QVERIFY(plot->property("yReferenceEnabled").toBool());
+        QCOMPARE(plot->property("xReferenceValue").toDouble(),0.0);
+        QCOMPARE(plot->property("yReferenceValue").toDouble(),0.0);
+        const auto center=[](QQuickItem *item) {
+            return item->mapToScene(QPointF(item->width()/2,item->height()/2)).toPoint();
+        };
+        const auto initial=grabItem(plot); QVERIFY(!initial.isNull());
+        const auto point=center(plot);
+        const auto drag=[&](const QPoint &start,const QPoint &end,Qt::MouseButton button=Qt::LeftButton) {
+            QTest::mousePress(window,button,Qt::NoModifier,start);
+            QTest::mouseMove(window,end,1);
+            QTest::mouseRelease(window,button,Qt::NoModifier,end);
+        };
+        drag(point,point+QPoint(35,25),Qt::MiddleButton);
+        QCOMPARE(grabItem(plot),initial);
+        drag(point,point+QPoint(35,25));
+        const auto dragged=grabItem(plot); QVERIFY(!dragged.isNull() && dragged!=initial);
+        QVERIFY(!plot->property("focusActive").toBool());
+        QVERIFY(QMetaObject::invokeMethod(plot,"resetView"));
+        QCOMPARE(grabItem(plot),initial);
+        const auto xAxis=plot->mapToScene(QPointF(plot->width()/2,plot->height()-12)).toPoint();
+        drag(xAxis,xAxis+QPoint(35,0));
+        const auto panned=grabItem(plot); QVERIFY(!panned.isNull() && panned!=initial);
+        const auto global=window->mapToGlobal(point);
+        QWheelEvent wheel(point,global,QPoint(),QPoint(0,120),Qt::NoButton,Qt::NoModifier,Qt::NoScrollPhase,false);
+        QCoreApplication::sendEvent(window,&wheel);
+        const auto zoomed=grabItem(plot); QVERIFY(!zoomed.isNull() && zoomed!=panned);
+
+        QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,point);
+        QTest::mouseMove(window,point+QPoint(2,1),1);
+        QTRY_VERIFY_WITH_TIMEOUT(plot->property("focusActive").toBool(),1800);
+        const auto crosshair=grabItem(plot); QVERIFY(!crosshair.isNull() && crosshair!=zoomed);
+        QTest::mouseMove(window,point+QPoint(25,20),1);
+        QVERIFY(plot->property("focusActive").toBool());
+        QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,point+QPoint(25,20));
+        QVERIFY(!plot->property("focusActive").toBool());
+        QCOMPARE(grabItem(plot),zoomed);
+
+        auto *parameterPopup=card->findChild<QObject *>("xyParametersPopup_1"); QVERIFY(parameterPopup);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,center(parameters));
+        QTRY_VERIFY(parameterPopup->property("opened").toBool());
+        auto *content=parameterPopup->property("contentItem").value<QQuickItem *>(); QVERIFY(content);
+        auto *focusToggle=visualItem(content,"xyFocusToggle_1"); QVERIFY(focusToggle);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,center(focusToggle));
+        QTRY_VERIFY(!plot->property("focusEnabled").toBool());
+        auto *xInput=visualItem(content,"plotReferenceValue_x_1"); QVERIFY(xInput);
+        QVERIFY(xInput->setProperty("text","1.5"));
+        QVERIFY(QMetaObject::invokeMethod(xInput,"editingFinished"));
+        QCOMPARE(plot->property("xReferenceValue").toDouble(),1.5);
+        auto *yToggle=visualItem(content,"plotReferenceToggle_y_1"); QVERIFY(yToggle);
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,center(yToggle));
+        QTRY_VERIFY(!plot->property("yReferenceEnabled").toBool());
         QVERIFY(protocol.selectProtocol("csv"));
         protocol.feedBytes("1,10\n2,20\n3,10\n");
-        QTRY_VERIFY(x->isEnabled() && y->isEnabled());
-        auto chooseField=[&](QQuickItem *selector,int index) {
-            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,selector->mapToScene(QPointF(selector->width()-16,16)).toPoint());
-            auto *popup=selector->property("popup").value<QObject *>(); QVERIFY(popup);
-            QTRY_VERIFY_WITH_TIMEOUT(popup->property("opened").toBool(),1500);
-            auto *list=popup->property("contentItem").value<QQuickItem *>(); QVERIFY(list);
+        auto chooseField=[&](const QString &axis,int index) {
+            auto *selector=visualItem(content,"xyAxis_1_"+axis); QVERIFY(selector);
+            QTRY_VERIFY(selector->isEnabled());
+            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,center(selector));
+            auto *fieldPopup=selector->property("popup").value<QObject *>(); QVERIFY(fieldPopup);
+            QTRY_VERIFY(fieldPopup->property("opened").toBool());
+            auto *list=fieldPopup->property("contentItem").value<QQuickItem *>(); QVERIFY(list);
             QQuickItem *option=nullptr;
-            const auto findOption=[&] {
-                return QMetaObject::invokeMethod(list,"itemAtIndex",Q_RETURN_ARG(QQuickItem *,option),Q_ARG(int,index)) && option;
-            };
-            QTRY_VERIFY_WITH_TIMEOUT(findOption(),1500);
-            QTest::qWait(60);
-            const auto choice=option->mapToScene(QPointF(option->width()/2,option->height()/2)).toPoint();
-            QTest::mouseClick(option->window(),Qt::LeftButton,Qt::NoModifier,choice);
+            QTRY_VERIFY(QMetaObject::invokeMethod(list,"itemAtIndex",Q_RETURN_ARG(QQuickItem *,option),
+                                                  Q_ARG(int,index)) && option);
+            QTest::mouseClick(option->window(),Qt::LeftButton,Qt::NoModifier,center(option));
         };
-        chooseField(x,0);
+        chooseField("x",0);
         QTRY_COMPARE_WITH_TIMEOUT(plot->property("xChannel").toString(),QStringLiteral("3:CH1:-1"),1500);
-        chooseField(y,1);
+        chooseField("y",1);
         QTRY_COMPARE_WITH_TIMEOUT(plot->property("yChannel").toString(),QStringLiteral("3:CH2:-1"),1500);
         QTRY_COMPARE(plot->property("pointCount").toInt(),3);
 
+        QVERIFY(QMetaObject::invokeMethod(parameterPopup,"close"));
+        QTRY_VERIFY(!parameterPopup->property("visible").toBool());
         const auto snapshot=qEnvironmentVariable("UART_XY_SNAPSHOT");
         if(!snapshot.isEmpty()) { QTest::qWait(60); QVERIFY(window->grabWindow().save(snapshot)); }
 
@@ -701,8 +1016,144 @@ private slots:
         QTRY_COMPARE(plot->property("pointCount").toInt(),4);
         QVERIFY(protocol.selectProtocol("none"));
         QTRY_COMPARE(plot->property("pointCount").toInt(),0);
-        QVERIFY(!x->isEnabled() && !y->isEnabled());
+        QVERIFY(parameters->isEnabled());
+        QVERIFY(QMetaObject::invokeMethod(workspace,"addWidget",
+            Q_ARG(QVariant,QVariant("time-plot")),Q_ARG(QVariant,QPointF(24,0))));
+        auto *lowerCard=visualItem(window->contentItem(),"timePlotCard_2"); QVERIFY(lowerCard);
+        auto *lowerPlot=visualItem(lowerCard,"timePlot_2"); QVERIFY(lowerPlot);
+        QVERIFY(QMetaObject::invokeMethod(card,"activated"));
+        QVERIFY(card->property("selected").toBool());
+        const auto overlap=center(parameters);
+        QTRY_VERIFY(lowerPlot->contains(lowerPlot->mapFromScene(overlap)));
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,overlap);
+        QVERIFY(card->property("selected").toBool());
+        QVERIFY(!lowerCard->property("selected").toBool());
+
+        QTest::keyClick(window,Qt::Key_Escape);
+        const auto exposedPlot=lowerPlot->mapToScene(QPointF(lowerPlot->width()-28,lowerPlot->height()/2)).toPoint();
+        QVERIFY(!card->contains(card->mapFromScene(exposedPlot)));
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,exposedPlot);
+        QVERIFY(lowerCard->property("selected").toBool());
+
+        const auto exposedXY=plot->mapToScene(QPointF(plot->width()/2,plot->height()-34)).toPoint();
+        QVERIFY(!lowerCard->contains(lowerCard->mapFromScene(exposedXY)));
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,exposedXY);
+        QVERIFY(card->property("selected").toBool());
+        QVERIFY(card->parentItem()->z()>lowerCard->parentItem()->z());
+
+        QVERIFY(QMetaObject::invokeMethod(workspace,"addWidget",
+            Q_ARG(QVariant,QVariant("time-plot")),Q_ARG(QVariant,QPointF(24,0))));
+        auto *newCard=visualItem(window->contentItem(),"timePlotCard_3"); QVERIFY(newCard);
+        QVERIFY(newCard->property("selected").toBool());
+        QVERIFY(newCard->parentItem()->z()>card->parentItem()->z());
+        QVERIFY(card->parentItem()->z()>lowerCard->parentItem()->z());
+        auto *canvas=visualItem(workspace,"componentCanvas"); QVERIFY(canvas);
+        const auto blank=canvas->mapToScene(QPointF(canvas->width()-24,canvas->height()-24)).toPoint();
+        for (auto *item : {card,lowerCard,newCard})
+            QVERIFY(!item->contains(item->mapFromScene(blank)));
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,blank);
+        QVERIFY(!newCard->property("selected").toBool());
+        QVERIFY(newCard->parentItem()->z()>card->parentItem()->z());
+        QVERIFY(card->parentItem()->z()>lowerCard->parentItem()->z());
+        window->requestActivate();
+        QTRY_VERIFY(window->isActive());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,exposedXY);
+        QVERIFY(card->property("selected").toBool());
+        QTest::keyClick(window,Qt::Key_C,Qt::ControlModifier);
+        QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
+        QTRY_COMPARE(workspace->property("widgetCount").toInt(),4);
+        auto *duplicate=visualItem(window->contentItem(),"xyPlotCard_4"); QVERIFY(duplicate);
+        QVERIFY(duplicate->property("selected").toBool());
+        QCOMPARE(duplicate->size(),card->size());
+        QCOMPARE(duplicate->property("xReferenceValue").toDouble(),1.5);
+        QCOMPARE(duplicate->property("yReferenceEnabled").toBool(),false);
+        QTest::keyClick(window,Qt::Key_Delete);
+        QTRY_COMPARE(workspace->property("widgetCount").toInt(),3);
+
+        auto rightClickAction=[&](QQuickItem *item,const QPoint &point,const QString &action) {
+            QTest::mouseClick(window,Qt::RightButton,Qt::NoModifier,point);
+            auto *menu=item->findChild<QObject *>("componentContextMenu"); QVERIFY(menu);
+            QTRY_VERIFY(menu->property("opened").toBool());
+            auto *menuContent=menu->property("contentItem").value<QQuickItem *>(); QVERIFY(menuContent);
+            auto *entry=visualItem(menuContent,action); QVERIFY(entry && entry->isEnabled());
+            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,center(entry));
+        };
+        rightClickAction(card,exposedXY,"copyComponentAction");
+        rightClickAction(card,exposedXY,"pasteComponentAction");
+        QTRY_COMPARE(workspace->property("widgetCount").toInt(),4);
+        auto *pasted=visualItem(window->contentItem(),"xyPlotCard_5"); QVERIFY(pasted);
+        rightClickAction(pasted,center(pasted),"deleteComponentAction");
+        QTRY_COMPARE(workspace->property("widgetCount").toInt(),3);
+        const auto pastePoint=canvas->mapToScene(QPointF(76,canvas->height()-125)).toPoint();
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,pastePoint);
+        QTest::keyClick(window,Qt::Key_V,Qt::ControlModifier);
+        QTRY_COMPARE(workspace->property("widgetCount").toInt(),4);
+        auto *keyboardPaste=visualItem(window->contentItem(),"xyPlotCard_6"); QVERIFY(keyboardPaste);
+        QCOMPARE(keyboardPaste->mapToScene(QPointF()).toPoint(),pastePoint-QPoint(16,16));
+        QTest::keyClick(window,Qt::Key_Delete);
+        QTRY_COMPARE(workspace->property("widgetCount").toInt(),3);
+
+        QTest::mouseClick(window,Qt::RightButton,Qt::NoModifier,pastePoint);
+        auto *canvasMenu=workspace->findChild<QObject *>("componentCanvasMenu"); QVERIFY(canvasMenu);
+        QTRY_VERIFY(canvasMenu->property("opened").toBool());
+        auto *canvasMenuContent=canvasMenu->property("contentItem").value<QQuickItem *>(); QVERIFY(canvasMenuContent);
+        auto *pasteAction=visualItem(canvasMenuContent,"pasteOnCanvasAction"); QVERIFY(pasteAction && pasteAction->isEnabled());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,center(pasteAction));
+        QTRY_COMPARE(workspace->property("widgetCount").toInt(),4);
+        auto *menuPaste=visualItem(window->contentItem(),"xyPlotCard_7"); QVERIFY(menuPaste);
+        QCOMPARE(menuPaste->mapToScene(QPointF()).toPoint(),pastePoint-QPoint(16,16));
         window->close();
+    }
+    void mainTitleBarUi() {
+        ApplicationServices services;
+        QQmlApplicationEngine engine;
+        engine.rootContext()->setContextProperty("appSettings",&services.settings());
+        engine.rootContext()->setContextProperty("serialConnection",&services.serialConnection());
+        engine.rootContext()->setContextProperty("receiveSession",&services.receiveSession());
+        engine.rootContext()->setContextProperty("protocolSession",&services.protocolSession());
+        engine.load(QUrl::fromLocalFile(QStringLiteral(UART_SOURCE_DIR "/qml/Main.qml")));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        auto *window=qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        QVERIFY(window);
+        QVERIFY(window->flags().testFlag(Qt::FramelessWindowHint));
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+
+        auto *dragArea=window->findChild<QQuickItem *>("mainTitleDragArea");
+        auto *maximize=window->findChild<QQuickItem *>("mainMaximizeButton");
+        auto *minimize=window->findChild<QQuickItem *>("mainMinimizeButton");
+        auto *close=window->findChild<QQuickItem *>("mainCloseButton");
+        auto *grip=visualItem(window->contentItem(),"mainWindowResize_rb");
+        QVERIFY(dragArea && maximize && minimize && close && grip);
+        auto click=[&](QQuickItem *item) {
+            const auto point=item->mapToScene(QPointF(item->width()/2,item->height()/2)).toPoint();
+            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,point);
+        };
+
+        QVERIFY(grip->isVisible());
+        click(maximize);
+        QTRY_COMPARE(window->visibility(),QWindow::Maximized);
+        QVERIFY(!grip->isVisible());
+        click(maximize);
+        QTRY_COMPARE(window->visibility(),QWindow::Windowed);
+        QVERIFY(grip->isVisible());
+
+        const auto titlePoint=dragArea->mapToScene(QPointF(dragArea->width()/2,dragArea->height()/2)).toPoint();
+        QTest::mouseDClick(window,Qt::LeftButton,Qt::NoModifier,titlePoint);
+        QTRY_COMPARE(window->visibility(),QWindow::Maximized);
+        QSignalSpy minimizeClicks(minimize,SIGNAL(clicked()));
+        click(minimize);
+        QCOMPARE(minimizeClicks.count(),1);
+        if (QGuiApplication::platformName().startsWith("wayland")) {
+            // xdg-shell does not report minimized state or offer a restore request.
+            window->hide();
+        } else {
+            QTRY_COMPARE(window->visibility(),QWindow::Minimized);
+        }
+        window->showNormal();
+        QTRY_COMPARE(window->visibility(),QWindow::Windowed);
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        click(close);
+        QTRY_VERIFY(!window->isVisible());
     }
     void halfDockingUi() {
         ApplicationServices services; QQmlApplicationEngine engine;
@@ -726,15 +1177,46 @@ private slots:
         QVERIFY(serial->mapToScene(QPointF()).x()<components->mapToScene(QPointF()).x());
         QVERIFY(components->mapToScene(QPointF()).x()<receive->mapToScene(QPointF()).x());
         QCOMPARE(components->height(),area->height()); QCOMPARE(receive->height(),area->height());
+        const auto originalSize=window->size();
+        const auto horizontalRatio=[&] { return components->width()/(components->width()+receive->width()); };
+        const auto initialRatio=horizontalRatio();
+        const auto horizontalDivider=components->mapToScene(QPointF(components->width()+6,components->height()/2)).toPoint();
+        QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,horizontalDivider);
+        QTest::mouseMove(window,horizontalDivider-QPoint(50,0),1);
+        QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,horizontalDivider-QPoint(50,0));
+        QTRY_VERIFY(std::abs(horizontalRatio()-initialRatio)>0.025);
+        const auto adjustedHorizontalRatio=horizontalRatio();
+        const auto horizontalExtent=components->width()+receive->width();
+        window->resize(originalSize+QSize(450,200));
+        QTRY_COMPARE(components->width()+receive->width(),horizontalExtent+450);
+        QTRY_VERIFY(std::abs(horizontalRatio()-adjustedHorizontalRatio)<0.002);
+        window->resize(originalSize);
+        QTRY_COMPARE(components->width()+receive->width(),horizontalExtent);
+        QTRY_VERIFY(std::abs(horizontalRatio()-adjustedHorizontalRatio)<0.002);
         QVERIFY(QMetaObject::invokeMethod(receive,"undock")); QTest::qWait(40);
         auto *receiveTracker=receive->findChild<DockWindowController *>("receiveDockController"); QVERIFY(receiveTracker);
         const auto bottom=QPointF(contentDockRect(window).center().x(),contentDockRect(window).bottom()-8);
         receiveTracker->updateDrag(bottom); receiveTracker->endDrag(bottom); QTest::qWait(40);
+        const auto verticalRatio=[&] { return components->height()/(components->height()+receive->height()); };
+        const auto verticalDivider=components->mapToScene(QPointF(components->width()/2,components->height()+6)).toPoint();
+        QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,verticalDivider);
+        QTest::mouseMove(window,verticalDivider+QPoint(0,65),1);
+        QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,verticalDivider+QPoint(0,65));
+        QTRY_VERIFY(verticalRatio()>0.55);
+        const auto adjustedVerticalRatio=verticalRatio();
+        const auto verticalExtent=components->height()+receive->height();
+        window->resize(originalSize+QSize(450,200));
+        QTRY_COMPARE(components->height()+receive->height(),verticalExtent+200);
+        QTRY_VERIFY(std::abs(verticalRatio()-adjustedVerticalRatio)<0.002);
+        window->resize(originalSize);
+        QTRY_COMPARE(components->height()+receive->height(),verticalExtent);
+        QTRY_VERIFY(std::abs(verticalRatio()-adjustedVerticalRatio)<0.002);
         // The receive split may shrink to its title and expand without losing content.
         auto *receiveContent=window->findChild<QQuickItem *>("receiveDockContent"); QVERIFY(receiveContent);
         const auto originalHeight=receive->height();
         auto divider=components->mapToScene(QPointF(components->width()/2,components->height()+6)).toPoint();
-        const int collapseDelta=qRound(originalHeight-38);
+        const auto expandedDivider=divider;
+        const int collapseDelta=qRound(originalHeight-38)+1;
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,divider);
         QTest::mouseMove(window,divider+QPoint(0,collapseDelta),1);
         QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,divider+QPoint(0,collapseDelta));
@@ -743,8 +1225,8 @@ private slots:
         if(!collapsedImage.isEmpty()) { QTest::qWait(40); QVERIFY(window->grabWindow().save(collapsedImage)); }
         divider=components->mapToScene(QPointF(components->width()/2,components->height()+6)).toPoint();
         QTest::mousePress(window,Qt::LeftButton,Qt::NoModifier,divider);
-        QTest::mouseMove(window,divider-QPoint(0,collapseDelta),1);
-        QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,divider-QPoint(0,collapseDelta));
+        QTest::mouseMove(window,expandedDivider,1);
+        QTest::mouseRelease(window,Qt::LeftButton,Qt::NoModifier,expandedDivider);
         QTRY_VERIFY(std::abs(receive->height()-originalHeight)<=1); QVERIFY(receiveContent->isVisible());
         auto rect=[](QQuickItem *item) { return QRectF(item->mapToGlobal(QPointF()),item->size()); };
         auto matches=[&](QQuickItem *item,QRectF planned) {
@@ -790,6 +1272,89 @@ private slots:
         QVERIFY(QMetaObject::invokeMethod(serial,"undock")); QVERIFY(QMetaObject::invokeMethod(receive,"undock")); QTest::qWait(60);
         QCOMPARE(components->size(),area->size());
         window->close();
+    }
+    void dockLayoutRoundTrip() {
+        const auto load=[](QQmlApplicationEngine &engine,ApplicationServices &services) {
+            engine.rootContext()->setContextProperty("appSettings",&services.settings());
+            engine.rootContext()->setContextProperty("serialConnection",&services.serialConnection());
+            engine.rootContext()->setContextProperty("receiveSession",&services.receiveSession());
+            engine.rootContext()->setContextProperty("protocolSession",&services.protocolSession());
+            engine.load(QUrl::fromLocalFile(QStringLiteral(UART_SOURCE_DIR "/qml/Main.qml")));
+        };
+        {
+            ApplicationServices services;
+            QQmlApplicationEngine engine;
+            load(engine,services);
+            QVERIFY(!engine.rootObjects().isEmpty());
+            auto *window=qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window);
+            auto *split=window->findChild<QQuickItem *>("dockSplit"); QVERIFY(split);
+            auto *workspace=window->findChild<QQuickItem *>("componentWorkspace"); QVERIFY(workspace);
+            auto *component=window->findChild<QQuickItem *>("componentsDock"); QVERIFY(component);
+            QVERIFY(QTest::qWaitForWindowExposed(window));
+            const QVariantMap floatingGeometry{{"x",72},{"y",115},{"width",430},{"height",330}};
+            const QVariantMap state{{"version",1},{"sidebarEdge","right"},{"sidebarCollapsed",true},
+                {"vertical",true},{"receiveFirst",true},{"ratio",0.42},
+                {"floating",QVariantMap{{"components",floatingGeometry}}}};
+            QVERIFY(QMetaObject::invokeMethod(split->parentItem(),"restoreLayout",Q_ARG(QVariant,QVariant(state))));
+            QTRY_VERIFY(component->property("floating").toBool());
+            QVERIFY(window->setProperty("leftPage",1));
+            QVERIFY(QMetaObject::invokeMethod(workspace,"addWidget",
+                Q_ARG(QVariant,QVariant("time-plot")),Q_ARG(QVariant,QPointF(40,80))));
+            QVERIFY(window->close());
+            const auto saved=services.settings().loadDockLayout();
+            QCOMPARE(saved.value("ratio").toDouble(),0.42);
+            QCOMPARE(saved.value("leftPage").toInt(),1);
+            QVERIFY(saved.value("floating").toMap().contains("components"));
+        }
+        {
+            ApplicationServices services;
+            QQmlApplicationEngine engine;
+            load(engine,services);
+            QVERIFY(!engine.rootObjects().isEmpty());
+            auto *window=qobject_cast<QQuickWindow *>(engine.rootObjects().first()); QVERIFY(window);
+            auto *serial=window->findChild<QQuickItem *>("connectionDock"); QVERIFY(serial);
+            auto *component=window->findChild<QQuickItem *>("componentsDock"); QVERIFY(component);
+            auto *receive=window->findChild<QQuickItem *>("receiveDock"); QVERIFY(receive);
+            auto *floating=window->findChild<QQuickWindow *>("componentsFloatingWindow"); QVERIFY(floating);
+            auto *workspace=window->findChild<QQuickItem *>("componentWorkspace"); QVERIFY(workspace);
+            auto *split=window->findChild<QQuickItem *>("dockSplit"); QVERIFY(split);
+            QVERIFY(QTest::qWaitForWindowExposed(window));
+            QCOMPARE(window->property("leftPage").toInt(),1);
+            QCOMPARE(serial->property("sidebarEdge").toString(),QString("right"));
+            QVERIFY(serial->property("sidebarCollapsed").toBool());
+            QVERIFY(component->property("floating").toBool());
+            QCOMPARE(floating->size(),QSize(430,330));
+            QCOMPARE(workspace->property("widgetCount").toInt(),1);
+
+            QVERIFY(QMetaObject::invokeMethod(component,"dock",Q_ARG(QVariant,QVariant()),
+                Q_ARG(QVariant,QVariant()),Q_ARG(QVariant,QVariant())));
+            QTRY_VERIFY(!component->property("floating").toBool());
+            QTRY_VERIFY(receive->mapToScene(QPointF()).y()<component->mapToScene(QPointF()).y());
+            QCOMPARE(split->parentItem()->property("groupRatio").toDouble(),0.42);
+
+            auto *settings=window->findChild<QQuickItem *>("settingsButton"); QVERIFY(settings);
+            auto *reset=window->findChild<QQuickItem *>("resetDockLayoutButton"); QVERIFY(reset);
+            QVERIFY(QMetaObject::invokeMethod(settings,"clicked"));
+            QTRY_VERIFY(reset->isVisible() && reset->width()>=120 && reset->height()>=30);
+            window->requestActivate();
+            QTRY_VERIFY(window->isActive());
+            QTest::qWait(60);
+            QSignalSpy resetClicks(reset,SIGNAL(clicked()));
+            const auto buttonCenter=reset->mapToScene(QPointF(reset->width()/2,reset->height()/2)).toPoint();
+            QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,buttonCenter);
+            QCOMPARE(resetClicks.count(),1);
+            QVERIFY(QMetaObject::invokeMethod(settings,"clicked"));
+            QCOMPARE(window->property("leftPage").toInt(),0);
+            QCOMPARE(serial->property("sidebarEdge").toString(),QString("left"));
+            QVERIFY(!serial->property("sidebarCollapsed").toBool());
+            QVERIFY(!component->property("floating").toBool());
+            QTRY_VERIFY(serial->mapToScene(QPointF()).x()<component->mapToScene(QPointF()).x());
+            QTRY_VERIFY(component->mapToScene(QPointF()).x()<receive->mapToScene(QPointF()).x());
+            QCOMPARE(split->parentItem()->property("groupRatio").toDouble(),0.56);
+            QCOMPARE(workspace->property("widgetCount").toInt(),1);
+            QVERIFY(window->close());
+            QCOMPARE(services.settings().loadDockLayout().value("sidebarEdge").toString(),QString("left"));
+        }
     }
     void fixedSidebarUi() {
         ApplicationServices services; QQmlApplicationEngine engine;
@@ -1743,6 +2308,33 @@ private slots:
         auto *background=popup->property("background").value<QObject *>(); QVERIFY(background);
         QCOMPARE(background->property("color").value<QColor>(),QColor("white"));
         QVERIFY(QMetaObject::invokeMethod(popup,"close"));
+        auto *baudInput=combo->property("contentItem").value<QQuickItem *>(); QVERIFY(baudInput);
+        QTRY_VERIFY(!popup->property("visible").toBool());
+        const auto baudPoint=baudInput->mapToScene(QPointF(20,baudInput->height()/2)).toPoint();
+        window->requestActivate();
+        QTRY_VERIFY(window->isActive());
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,baudPoint);
+        QTRY_VERIFY(baudInput->hasActiveFocus());
+        QTRY_COMPARE(window->cursor().shape(),Qt::IBeamCursor);
+        QVERIFY(QMetaObject::invokeMethod(baudInput,"selectAll"));
+        QTest::mouseClick(window,Qt::RightButton,Qt::NoModifier,baudPoint);
+        auto *baudMenu=baudInput->findChild<QObject *>("textEditingMenu"); QVERIFY(baudMenu);
+        QTRY_VERIFY(baudMenu->property("opened").toBool());
+        auto *baudMenuContent=baudMenu->property("contentItem").value<QQuickItem *>(); QVERIFY(baudMenuContent);
+        auto *cut=visualItem(baudMenuContent,"cutInputText"); QVERIFY(cut && cut->isEnabled());
+        auto *deleteText=visualItem(baudMenuContent,"deleteInputText"); QVERIFY(deleteText && deleteText->isEnabled());
+        QCOMPARE(cut->property("text").toString(),QStringLiteral("剪切"));
+        QTest::mouseClick(window,Qt::LeftButton,Qt::NoModifier,
+                          deleteText->mapToScene(QPointF(deleteText->width()/2,deleteText->height()/2)).toPoint());
+        QCOMPARE(combo->property("editText").toString(),QString());
+        combo->setProperty("editText","115200");
+        for (int attempt=0;attempt<2;++attempt) {
+            QTRY_VERIFY(!baudMenu->property("visible").toBool());
+            QTest::mouseClick(window,Qt::RightButton,Qt::NoModifier,baudPoint);
+            QTRY_VERIFY(baudMenu->property("opened").toBool());
+            QTest::keyClick(window,Qt::Key_Escape);
+        }
+        QTRY_VERIFY(!baudMenu->property("visible").toBool());
         QVERIFY(output->property("readOnly").toBool()); QVERIFY(output->property("selectByMouse").toBool());
         QVERIFY(connection.openPort(p.path));
         QVERIFY(p.send("hello\n"));
